@@ -73,6 +73,10 @@ export function useSendTurn(chatId: string | null) {
         if (event === "dispatched") {
           const envelope = SendTurnResponseSchema.parse(data);
           startRun(envelope.runId);
+          // The chat may have just been auto-titled from this message (first
+          // message in the chat) and its updatedAt bumped either way — both
+          // affect the sidebar's list/ordering.
+          queryClient.invalidateQueries({ queryKey: ["chats"] });
         } else if (event === "delta") {
           appendDelta((data as { text: string }).text);
         } else if (event === "done") {
