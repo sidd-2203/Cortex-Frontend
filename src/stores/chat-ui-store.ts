@@ -6,28 +6,48 @@ import { create } from "zustand";
 // stream while it's arriving, so the composer and message list can both
 // react to it without prop drilling. Once a turn completes, the persisted
 // message from the server is the source of truth and this resets.
+//
+// `triggerRunId` + `publicAccessToken` are what let a subscribing component
+// (useAgentRunSubscription) talk to Trigger.dev Realtime directly, rather
+// than proxying the stream through our own backend.
 interface ChatUiState {
   activeChatId: string | null;
   runId: string | null;
+  triggerRunId: string | null;
+  publicAccessToken: string | null;
   status: "idle" | "streaming" | "error";
   streamingText: string;
   error: string | null;
   setActiveChat: (chatId: string | null) => void;
-  startRun: (runId: string) => void;
-  appendDelta: (text: string) => void;
+  startRun: (sub: { runId: string; triggerRunId: string; publicAccessToken: string }) => void;
+  setStreamingText: (text: string) => void;
   finish: () => void;
   fail: (message: string) => void;
 }
 
-export const useChatUiStore = create<ChatUiState>((set) => ({
-  activeChatId: null,
+const idleFields = {
   runId: null,
-  status: "idle",
+  triggerRunId: null,
+  publicAccessToken: null,
+  status: "idle" as const,
   streamingText: "",
   error: null,
-  setActiveChat: (chatId) => set({ activeChatId: chatId, runId: null, status: "idle", streamingText: "", error: null }),
-  startRun: (runId) => set({ runId, status: "streaming", streamingText: "", error: null }),
-  appendDelta: (text) => set((s) => ({ streamingText: s.streamingText + text })),
-  finish: () => set({ status: "idle", runId: null, streamingText: "" }),
+};
+
+export const useChatUiStore = create<ChatUiState>((set) => ({
+  activeChatId: null,
+  ...idleFields,
+  setActiveChat: (chatId) => set({ activeChatId: chatId, ...idleFields }),
+  startRun: (sub) =>
+    set({
+      runId: sub.runId,
+      triggerRunId: sub.triggerRunId,
+      publicAccessToken: sub.publicAccessToken,
+      status: "streaming",
+      streamingText: "",
+      error: null,
+    }),
+  setStreamingText: (text) => set({ streamingText: text }),
+  finish: () => set({ ...idleFields }),
   fail: (message) => set({ status: "error", error: message }),
 }));
