@@ -1,36 +1,88 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Cortex — Frontend
 
-## Getting Started
+The chat UI for Cortex, an agent chat application. Backend (API,
+orchestration, Trigger.dev tasks) lives in a separate repo —
+[cortex-backend](https://github.com/sidd-2203/Cortex-Backend).
 
-First, run the development server:
+> **Status:** Day 1 of a 3-day build — one implicit chat per visit, send →
+> stream → persist works end-to-end. Chat list/switching, skills, tool UI,
+> attachments, and pixel-fidelity polish against the Galaxy Agent Chat
+> reference come next.
+
+## Stack
+
+pnpm · Next.js 16 (App Router) · TypeScript strict · Clerk · Zustand ·
+TanStack Query · Zod · shadcn/ui (Base UI + Nova preset) + Tailwind
+
+## Setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+cp .env.example .env.local   # fill in the values below
+pnpm dev                      # http://localhost:3001 (backend expects 3000 by default)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+| Var | Where it comes from |
+|---|---|
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` | Clerk dashboard — same app as the backend |
+| `NEXT_PUBLIC_API_URL` | the backend's origin (`http://localhost:3000` locally) |
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Architecture
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Auth: resource-based, Bearer token to the backend
 
-## Learn More
+`src/proxy.ts` is just `clerkMiddleware()` with no route matching — Clerk
+now recommends against gating by path in middleware (it can diverge from how
+Next.js actually routes a request). The page itself
+(`src/app/page.tsx`) calls `auth.protect()` directly.
 
-To learn more about Next.js, take a look at the following resources:
+The frontend and backend are separate origins with no shared cookie jar, so
+every API call carries a Clerk session token as `Authorization: Bearer
+<token>` (`src/lib/api-client.ts`, fetched fresh per call via
+`useAuth().getToken()`) rather than relying on cookies.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### State: TanStack Query for server state, Zustand for the live stream
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Persisted messages/chats are TanStack Query's job (`src/hooks/use-chat-
+queries.ts`) — cached, invalidated on mutation, backed by the server as
+source of truth. The token stream currently arriving over SSE is a
+different kind of state entirely (ephemeral, client-only, resets on
+completion), which is exactly what `useChatUiStore`
+(`src/stores/chat-ui-store.ts`) is for — avoids prop-drilling the in-flight
+text between the composer and message list without conflating it with
+persisted history.
 
-## Deploy on Vercel
+### Streaming
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+`EventSource` can't be used for the send-turn call — it's GET-only and can't
+carry an `Authorization` header. `useSendTurn` (`src/hooks/use-send-
+turn.ts`) reads the `fetch()` response body stream directly and parses the
+same `event: ...\ndata: ...\n\n` framing the backend writes.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Contracts
+
+`src/contracts/*.ts` is a **flagged, temporary** verbatim copy of the
+backend's Zod schemas (see the banner comment at the top of each file) —
+there's no monorepo linking the two repos yet, so this is the current
+shortcut for "the frontend never redefines a type." Edit the backend copy
+first.
+
+## Trade-offs / what I'd improve with more time
+
+- **One implicit chat per visit** — no chat list, switching, search, pin, or
+  delete yet in the UI (the backend API already supports all of this).
+- **Contracts duplication** — see above; would become a published package or
+  generated client with more time.
+- **No cloning-fidelity pass yet** — this is currently a functional-but-plain
+  shell, not yet compared screen-by-screen against the Galaxy Agent Chat
+  reference product.
+- **No attachments/media picker, plan mode, or interrupt/stop** in the
+  composer yet.
+
+## Next.js 16 / React 19.2 note
+
+Both are newer than typical training data cutoffs — `middleware.ts` became
+`proxy.ts` (named export, not default; Node-only runtime now), among other
+changes. Verified against the bundled docs
+(`node_modules/next/dist/docs`) rather than assumed where behavior looked
+unfamiliar.
