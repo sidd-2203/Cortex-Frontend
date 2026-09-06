@@ -21,29 +21,46 @@ function AttachmentChip({
   onRemove: () => void;
 }) {
   const isImage = file.type.startsWith("image/");
-  const [previewUrl] = useState(() => (isImage ? URL.createObjectURL(file) : null));
+  const isVideo = file.type.startsWith("video/");
+  const [previewUrl] = useState(() => (isImage || isVideo ? URL.createObjectURL(file) : null));
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
 
   return (
     <div
-      className={cn(
-        "group relative flex items-center gap-2 rounded-lg border px-2 py-1.5 text-xs",
-        status === "error" ? "border-destructive/40 bg-destructive/10" : "border-border bg-secondary",
-      )}
-      title={error}
+      className="group relative size-20 shrink-0 overflow-hidden rounded-lg border border-border bg-secondary"
+      title={error ?? file.name}
     >
-      {previewUrl ? (
+      {isImage && previewUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={previewUrl} alt="" className="size-6 rounded object-cover" />
+        <img src={previewUrl} alt="" className="size-full object-cover" />
+      ) : isVideo && previewUrl ? (
+        <video src={previewUrl} muted playsInline preload="metadata" className="size-full object-cover" />
       ) : (
-        <FileText className="size-4 text-muted-foreground" />
+        <div className="flex size-full items-center justify-center">
+          <FileText className="size-6 text-muted-foreground" />
+        </div>
       )}
-      <span className="max-w-32 truncate">{file.name}</span>
-      {status === "uploading" && <span className="text-muted-foreground">{Math.round(progress * 100)}%</span>}
-      {status === "error" && <span className="text-destructive">failed</span>}
+
+      {status === "uploading" && (
+        <div className="absolute inset-0 flex items-center justify-center bg-background/70 text-xs font-medium">
+          {Math.round(progress * 100)}%
+        </div>
+      )}
+      {status === "error" && (
+        <div className="absolute inset-0 flex items-center justify-center bg-destructive/20 text-xs font-medium text-destructive">
+          Failed
+        </div>
+      )}
+
       <button
         onClick={onRemove}
-        className="rounded p-0.5 opacity-0 hover:bg-foreground/10 group-hover:opacity-100"
         aria-label="Remove attachment"
+        className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-full bg-background/80 opacity-0 transition-opacity hover:bg-background group-hover:opacity-100"
       >
         <X className="size-3" />
       </button>

@@ -66,19 +66,75 @@ function Bubble({
   );
 }
 
-/** A tool_use paired with its tool_result (matched by id), rendered as one compact pill. */
+type MediaItem = { type: "image" | "video"; url: string };
+
+/**
+ * Pulls image/video URLs out of a tool call's input or output, generically —
+ * every Magica-backed tool's schema (see contracts/tools.ts) shapes media as
+ * one of these fields, whether it's the source you fed in (imageUrl on
+ * crop_image, imageUrls/maskUrl on edit_image, videoUrls on merge_videos) or
+ * the result you got back (imageUrl/videoUrl/imageUrls). Covers all four
+ * tools' both directions without naming any of them individually, and keeps
+ * working if a future tool follows the same field-naming convention.
+ */
+function extractMedia(value: unknown): MediaItem[] {
+  if (!value || typeof value !== "object") return [];
+  const o = value as Record<string, unknown>;
+  const media: MediaItem[] = [];
+  if (typeof o.imageUrl === "string") media.push({ type: "image", url: o.imageUrl });
+  if (typeof o.videoUrl === "string") media.push({ type: "video", url: o.videoUrl });
+  if (typeof o.maskUrl === "string") media.push({ type: "image", url: o.maskUrl });
+  if (Array.isArray(o.imageUrls)) {
+    for (const url of o.imageUrls) if (typeof url === "string") media.push({ type: "image", url });
+  }
+  if (Array.isArray(o.videoUrls)) {
+    for (const url of o.videoUrls) if (typeof url === "string") media.push({ type: "video", url });
+  }
+  return media;
+}
+
+function MediaRow({ label, items }: { label?: string; items: MediaItem[] }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-1">
+      {label && <span className="text-[0.7rem] font-medium text-muted-foreground">{label}</span>}
+      <div className="flex flex-wrap gap-2">
+        {items.map((m, i) =>
+          m.type === "image" ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img key={i} src={m.url} alt="" className="max-h-64 rounded-lg" />
+          ) : (
+            <video key={i} src={m.url} controls className="max-h-64 rounded-lg" />
+          ),
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** A tool_use paired with its tool_result (matched by id) — a compact status pill, plus inline previews for any image/video the tool was given and/or produced. */
 function ToolCallPill({ toolUse, result }: { toolUse: ToolUseBlock; result?: ToolResultBlock }) {
   const isError = result?.isError;
+  const inputMedia = extractMedia(toolUse.input);
+  const outputMedia = result && !isError ? extractMedia(result.output) : [];
+  // Only label them when both are present — otherwise which is which is
+  // unambiguous and a label is just noise.
+  const showLabels = inputMedia.length > 0 && outputMedia.length > 0;
+
   return (
-    <div
-      className={cn(
-        "inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-xs",
-        isError ? "bg-destructive/10 text-destructive" : "bg-foreground/5 text-muted-foreground",
-      )}
-      title={result ? JSON.stringify(result.output) : "running…"}
-    >
-      <span aria-hidden>{isError ? "✗" : result ? "✓" : "⋯"}</span>
-      <span className="font-mono">{toolUse.toolName}</span>
+    <div className="flex flex-col gap-2">
+      <div
+        className={cn(
+          "inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-xs",
+          isError ? "bg-destructive/10 text-destructive" : "bg-foreground/5 text-muted-foreground",
+        )}
+        title={result ? JSON.stringify(result.output) : "running…"}
+      >
+        <span aria-hidden>{isError ? "✗" : result ? "✓" : "⋯"}</span>
+        <span className="font-mono">{toolUse.toolName}</span>
+      </div>
+      <MediaRow label={showLabels ? "Input" : undefined} items={inputMedia} />
+      <MediaRow label={showLabels ? "Result" : undefined} items={outputMedia} />
     </div>
   );
 }
