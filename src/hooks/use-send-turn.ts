@@ -2,6 +2,7 @@
 
 import { useCallback } from "react";
 import { useAuth } from "@clerk/nextjs";
+import { useQueryClient } from "@tanstack/react-query";
 import { sendTurn } from "@/lib/api-client";
 import { useCreateChat } from "@/hooks/use-chat-queries";
 import { useChatUiStore } from "@/stores/chat-ui-store";
@@ -22,13 +23,17 @@ export function useSendTurn(chatId: string | null) {
   const { startRun, fail } = useChatUiStore();
   const setActiveChat = useChatUiStore((s) => s.setActiveChat);
   const createChat = useCreateChat();
+  const queryClient = useQueryClient();
 
   const send = useCallback(
     async (text: string, attachmentIds: string[] = []) => {
       const idempotencyKey = crypto.randomUUID();
+      // Declared outside the try so the catch block knows which chat's
+      // message list to refresh even when the failure happens after a
+      // draft chat was just created.
+      let targetChatId = chatId;
 
       try {
-        let targetChatId = chatId;
         if (!targetChatId) {
           const chat = await createChat.mutateAsync(undefined);
           targetChatId = chat.id;
@@ -46,9 +51,16 @@ export function useSendTurn(chatId: string | null) {
         startRun(envelope);
       } catch (err) {
         fail(err instanceof Error ? err.message : "Failed to send message");
+        // A dispatch failure persists a real FAILED assistant message
+        // server-side (see the messages route) so it survives a reload —
+        // this is what makes it show up right now too, instead of only
+        // after the next manual refresh.
+        if (targetChatId) {
+          void queryClient.invalidateQueries({ queryKey: ["messages", targetChatId] });
+        }
       }
     },
-    [chatId, getToken, startRun, fail, createChat, setActiveChat],
+    [chatId, getToken, startRun, fail, createChat, setActiveChat, queryClient],
   );
 
   return { send };
