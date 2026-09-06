@@ -61,7 +61,7 @@ export function ChatSidebar() {
   const setActiveChat = useChatUiStore((s) => s.setActiveChat);
 
   return (
-    <aside className="flex h-full w-72 shrink-0 flex-col bg-sidebar">
+    <aside className="flex h-full w-72 shrink-0 flex-col border-r border-border bg-sidebar">
       <div className="flex items-center gap-2 px-4 py-4">
         <div className="flex size-6 items-center justify-center rounded-md bg-brand text-brand-foreground text-xs font-bold">
           C
@@ -114,7 +114,9 @@ export function ChatSidebar() {
         </nav>
       </ScrollArea>
 
-      <div className="flex flex-col gap-2.5 border-t border-border px-3 py-3">
+      {/* h-20 is shared with the composer bar next to it so both border-t
+          lines sit at exactly the same height — see chat-workspace.tsx. */}
+      <div className="flex h-20 shrink-0 flex-col justify-center gap-2 border-t border-border px-3">
         {credits && (
           <div className="flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5 text-xs font-medium">
             <Zap className="size-3.5 text-brand" />

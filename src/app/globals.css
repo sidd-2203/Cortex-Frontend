@@ -83,7 +83,9 @@
   --chart-4: oklch(0.6 0.19 40);
   --chart-5: oklch(0.269 0 0);
   --radius: 0.9rem;
-  --sidebar: oklch(0.99 0 0);
+  /* Deliberately a touch darker than --background so the sidebar reads as
+     its own surface, not a continuation of the thread. */
+  --sidebar: oklch(0.975 0 0);
   --sidebar-foreground: oklch(0.15 0 0);
   --sidebar-primary: oklch(0.17 0 0);
   --sidebar-primary-foreground: oklch(0.99 0 0);
