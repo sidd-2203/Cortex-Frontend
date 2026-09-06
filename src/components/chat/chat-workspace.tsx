@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { UserButton } from "@clerk/nextjs";
 import { useChats, useCreateChat, useMessages } from "@/hooks/use-chat-queries";
 import { useSendTurn } from "@/hooks/use-send-turn";
+import { useAgentRunSubscription } from "@/hooks/use-agent-run-subscription";
 import { useChatUiStore } from "@/stores/chat-ui-store";
 import { MessageList } from "./message-list";
 import { Composer } from "./composer";
@@ -34,6 +35,7 @@ export function ChatWorkspace() {
 
   const { data, isLoading } = useMessages(activeChatId);
   const { send } = useSendTurn(activeChatId);
+  useAgentRunSubscription(activeChatId);
 
   return (
     <div className="flex h-full">

@@ -3,10 +3,13 @@ import {
   MessageSchema,
   SendTurnRequestSchema,
   SendTurnResponseSchema,
+  ActiveRunResponseSchema,
   cursorPageResponseSchema,
   type ChatSummary,
   type Message,
   type SendTurnRequest,
+  type SendTurnResponse,
+  type ActiveRunResponse,
 } from "@/contracts/chat";
 import { z } from "zod";
 
@@ -38,7 +41,7 @@ async function apiFetch(path: string, token: string | null, init: RequestInit = 
     },
   });
 
-  if (!res.ok && !res.headers.get("content-type")?.includes("text/event-stream")) {
+  if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     const message = body?.error?.message ?? `Request failed with status ${res.status}`;
     const code = body?.error?.code ?? "unknown_error";
@@ -77,18 +80,29 @@ export function listMessages(token: string | null, chatId: string, params: { cur
 }
 
 /**
- * Send-turn returns a streaming SSE response — the caller reads it directly
- * (see useSendTurn) rather than getting a parsed body back, since the whole
- * point is to forward `delta` events to the UI as they arrive.
+ * Send-turn dispatches the turn and returns almost immediately with a
+ * subscription (runId/triggerRunId/publicAccessToken) — it does NOT wait on
+ * the LLM completion. The caller subscribes to Trigger.dev Realtime
+ * directly with that subscription (see useAgentRunSubscription) to get the
+ * actual token stream.
  */
-export function sendTurn(token: string | null, chatId: string, body: SendTurnRequest, signal?: AbortSignal) {
+export function sendTurn(
+  token: string | null,
+  chatId: string,
+  body: SendTurnRequest,
+  signal?: AbortSignal,
+): Promise<SendTurnResponse> {
   SendTurnRequestSchema.parse(body); // fail fast on a malformed request, before it leaves the browser
-  return apiFetch(`/api/chats/${chatId}/messages`, token, {
+  return apiFetchJson(`/api/chats/${chatId}/messages`, token, SendTurnResponseSchema, {
     method: "POST",
     body: JSON.stringify(body),
     signal,
   });
 }
 
-export { SendTurnResponseSchema };
-export type { Message, ChatSummary };
+/** Reload recovery: is there an in-flight run on this chat to resume watching? */
+export function getActiveRun(token: string | null, chatId: string): Promise<ActiveRunResponse> {
+  return apiFetchJson(`/api/chats/${chatId}/active-run`, token, ActiveRunResponseSchema);
+}
+
+export type { Message, ChatSummary, SendTurnResponse, ActiveRunResponse };
