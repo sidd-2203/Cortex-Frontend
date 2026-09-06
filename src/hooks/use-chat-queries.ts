@@ -2,7 +2,8 @@
 
 import { useAuth } from "@clerk/nextjs";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { listChats, createChat, listMessages } from "@/lib/api-client";
+import { listChats, createChat, listMessages, updateChat, deleteChat } from "@/lib/api-client";
+import { useChatUiStore } from "@/stores/chat-ui-store";
 
 /**
  * Every query/mutation here fetches a fresh Clerk session token per call
@@ -30,6 +31,41 @@ export function useCreateChat() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["chats"] });
+    },
+  });
+}
+
+export function useTogglePinChat() {
+  const { getToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ chatId, pinned }: { chatId: string; pinned: boolean }) => {
+      const token = await getToken();
+      return updateChat(token, chatId, { pinned });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["chats"] });
+    },
+  });
+}
+
+export function useDeleteChat() {
+  const { getToken } = useAuth();
+  const queryClient = useQueryClient();
+  const activeChatId = useChatUiStore((s) => s.activeChatId);
+  const setActiveChat = useChatUiStore((s) => s.setActiveChat);
+  return useMutation({
+    mutationFn: async (chatId: string) => {
+      const token = await getToken();
+      await deleteChat(token, chatId);
+      return chatId;
+    },
+    onSuccess: (deletedChatId) => {
+      queryClient.invalidateQueries({ queryKey: ["chats"] });
+      // Deleting the chat you're currently looking at needs to also clear
+      // it from the workspace — otherwise the composer keeps sending to a
+      // chat that no longer exists.
+      if (activeChatId === deletedChatId) setActiveChat(null);
     },
   });
 }

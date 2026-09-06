@@ -15,20 +15,30 @@ export function ChatWorkspace() {
   const setActiveChat = useChatUiStore((s) => s.setActiveChat);
   const { data: chatList, isLoading: chatsLoading } = useChats();
   const createChat = useCreateChat();
-  // Guards against firing the create-or-select effect twice in dev's
-  // StrictMode double-invoke, which would otherwise spin up two chats.
-  const initialized = useRef(false);
+  // Guards against firing this effect twice while a create-or-select is
+  // already in flight (dev StrictMode's synchronous double-invoke would
+  // otherwise race two createChat calls before either resolves). Reset
+  // once that operation settles, not held forever — activeChatId can
+  // legitimately go back to null later (e.g. deleting the active chat),
+  // and this needs to be able to fire again when it does.
+  const creatingOrSelecting = useRef(false);
 
   useEffect(() => {
-    if (activeChatId || chatsLoading || initialized.current) return;
-    initialized.current = true;
+    if (activeChatId || chatsLoading || creatingOrSelecting.current) return;
+    creatingOrSelecting.current = true;
 
     if (chatList && chatList.items.length > 0) {
       // Most recently active chat first (backend orders by updatedAt desc) —
       // resuming where you left off beats always starting fresh.
       setActiveChat(chatList.items[0]!.id);
+      creatingOrSelecting.current = false;
     } else {
-      createChat.mutate(undefined, { onSuccess: (chat) => setActiveChat(chat.id) });
+      createChat.mutate(undefined, {
+        onSuccess: (chat) => setActiveChat(chat.id),
+        onSettled: () => {
+          creatingOrSelecting.current = false;
+        },
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeChatId, chatsLoading, chatList]);
@@ -41,8 +51,13 @@ export function ChatWorkspace() {
     <div className="flex h-full">
       <ChatSidebar />
       <div className="flex flex-1 flex-col min-w-0">
-        <header className="flex items-center justify-between border-b px-4 py-3">
-          <h1 className="text-sm font-medium">Cortex</h1>
+        <header className="flex items-center justify-between border-b border-border/60 bg-background/70 px-5 py-3 backdrop-blur-sm">
+          <div className="flex items-center gap-2">
+            <div className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground text-xs font-bold">
+              C
+            </div>
+            <h1 className="text-sm font-semibold tracking-tight">Cortex</h1>
+          </div>
           <UserButton />
         </header>
         {isLoading || !activeChatId ? (

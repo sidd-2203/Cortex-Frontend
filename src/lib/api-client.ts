@@ -4,12 +4,14 @@ import {
   SendTurnRequestSchema,
   SendTurnResponseSchema,
   ActiveRunResponseSchema,
+  UpdateChatRequestSchema,
   cursorPageResponseSchema,
   type ChatSummary,
   type Message,
   type SendTurnRequest,
   type SendTurnResponse,
   type ActiveRunResponse,
+  type UpdateChatRequest,
 } from "@/contracts/chat";
 import { z } from "zod";
 
@@ -103,6 +105,18 @@ export function sendTurn(
 /** Reload recovery: is there an in-flight run on this chat to resume watching? */
 export function getActiveRun(token: string | null, chatId: string): Promise<ActiveRunResponse> {
   return apiFetchJson(`/api/chats/${chatId}/active-run`, token, ActiveRunResponseSchema);
+}
+
+export function updateChat(token: string | null, chatId: string, body: UpdateChatRequest): Promise<ChatSummary> {
+  UpdateChatRequestSchema.parse(body);
+  return apiFetchJson(`/api/chats/${chatId}`, token, ChatSummarySchema, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteChat(token: string | null, chatId: string): Promise<void> {
+  await apiFetch(`/api/chats/${chatId}`, token, { method: "DELETE" });
 }
 
 export type { Message, ChatSummary, SendTurnResponse, ActiveRunResponse };
