@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Pin, PinOff, Trash2, Plus, Search } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { UserButton } from "@clerk/nextjs";
+import { Pin, PinOff, Trash2, SquarePen, Search, Zap } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
-import { useChats, useCreateChat, useTogglePinChat, useDeleteChat } from "@/hooks/use-chat-queries";
+import { useChats, useTogglePinChat, useDeleteChat } from "@/hooks/use-chat-queries";
+import { useCreditBalance } from "@/hooks/use-credits";
 import { useChatUiStore } from "@/stores/chat-ui-store";
 import type { ChatSummary } from "@/contracts/chat";
 
@@ -17,15 +19,10 @@ function ChatRow({ chat, isActive, onSelect }: { chat: ChatSummary; isActive: bo
   return (
     <div
       className={cn(
-        "group relative flex items-center gap-1 rounded-xl px-2.5 py-2 text-sm transition-colors",
-        isActive
-          ? "bg-accent text-accent-foreground font-medium"
-          : "text-foreground/80 hover:bg-secondary",
+        "group flex items-center gap-1 rounded-lg px-2.5 py-2 text-sm transition-colors",
+        isActive ? "bg-accent font-medium text-accent-foreground" : "text-foreground/80 hover:bg-secondary",
       )}
     >
-      {isActive && (
-        <span className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-primary" />
-      )}
       <button onClick={onSelect} className="min-w-0 flex-1 truncate text-left" title={chat.title}>
         {chat.title}
       </button>
@@ -33,7 +30,7 @@ function ChatRow({ chat, isActive, onSelect }: { chat: ChatSummary; isActive: bo
         onClick={() => togglePin.mutate({ chatId: chat.id, pinned: !chat.pinned })}
         className={cn(
           "shrink-0 rounded-md p-1 hover:bg-foreground/10",
-          chat.pinned ? "opacity-100 text-primary" : "opacity-0 group-hover:opacity-100",
+          chat.pinned ? "opacity-100" : "opacity-0 group-hover:opacity-100",
         )}
         aria-label={chat.pinned ? "Unpin chat" : "Pin chat"}
         title={chat.pinned ? "Unpin" : "Pin"}
@@ -59,25 +56,33 @@ function ChatRow({ chat, isActive, onSelect }: { chat: ChatSummary; isActive: bo
 export function ChatSidebar() {
   const [search, setSearch] = useState("");
   const { data, isLoading } = useChats(search || undefined);
-  const createChat = useCreateChat();
+  const { data: credits } = useCreditBalance();
   const activeChatId = useChatUiStore((s) => s.activeChatId);
   const setActiveChat = useChatUiStore((s) => s.setActiveChat);
 
   return (
-    <aside className="w-64 shrink-0 border-r border-border/60 bg-sidebar flex flex-col h-full">
-      <div className="p-3 flex flex-col gap-2.5">
-        <Button
-          className="w-full justify-start gap-2 rounded-xl shadow-sm"
-          disabled={createChat.isPending}
-          onClick={() =>
-            createChat.mutate(undefined, {
-              onSuccess: (chat) => setActiveChat(chat.id),
-            })
-          }
+    <aside className="flex h-full w-72 shrink-0 flex-col bg-sidebar">
+      <div className="flex items-center gap-2 px-4 py-4">
+        <div className="flex size-6 items-center justify-center rounded-md bg-brand text-brand-foreground text-xs font-bold">
+          C
+        </div>
+        <span className="text-sm font-semibold tracking-tight">Cortex</span>
+      </div>
+
+      <nav className="flex flex-col gap-0.5 px-2">
+        {/* Opens a blank draft — the chat row isn't created until the first
+            message is actually sent (see useSendTurn), so clicking this and
+            walking away doesn't leave an empty "New chat" behind. */}
+        <button
+          onClick={() => setActiveChat(null)}
+          className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium hover:bg-secondary"
         >
-          <Plus className="size-4" />
+          <SquarePen className="size-4" />
           New chat
-        </Button>
+        </button>
+      </nav>
+
+      <div className="px-2 pt-2 pb-1">
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -85,10 +90,11 @@ export function ChatSidebar() {
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search chats…"
             aria-label="Search chats"
-            className="h-8 rounded-lg pl-8 text-sm"
+            className="h-8 rounded-lg border-transparent bg-secondary pl-8 text-sm shadow-none"
           />
         </div>
       </div>
+
       <ScrollArea className="flex-1">
         <nav className="flex flex-col gap-0.5 p-2">
           {isLoading && <p className="text-xs text-muted-foreground px-2 py-1.5">Loading…</p>}
@@ -107,6 +113,19 @@ export function ChatSidebar() {
           ))}
         </nav>
       </ScrollArea>
+
+      <div className="flex flex-col gap-2.5 border-t border-border px-3 py-3">
+        {credits && (
+          <div className="flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5 text-xs font-medium">
+            <Zap className="size-3.5 text-brand" />
+            {credits.balance.toLocaleString()} credits
+          </div>
+        )}
+        <div className="flex items-center justify-between">
+          <ThemeToggle />
+          <UserButton />
+        </div>
+      </div>
     </aside>
   );
 }

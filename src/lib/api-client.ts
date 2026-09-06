@@ -147,4 +147,10 @@ export function getUploadStatus(token: string | null, attachmentId: string): Pro
   return apiFetchJson(`/api/uploads/${attachmentId}`, token, AttachmentSchema);
 }
 
+const CreditBalanceResponseSchema = z.object({ balance: z.number().int() });
+
+export function getCreditBalance(token: string | null): Promise<{ balance: number }> {
+  return apiFetchJson("/api/credits", token, CreditBalanceResponseSchema);
+}
+
 export type { Message, ChatSummary, SendTurnResponse, ActiveRunResponse, Attachment };
