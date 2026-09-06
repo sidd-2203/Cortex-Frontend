@@ -151,7 +151,7 @@ export function Composer({
           placeholder="Message Cortex…"
           rows={1}
           disabled={isStreaming}
-          className="min-h-8 resize-none border-none bg-transparent px-0 py-1.5 shadow-none focus-visible:ring-0 dark:bg-transparent"
+          className="min-h-8 max-h-48 resize-none overflow-y-auto border-none bg-transparent px-0 py-1.5 shadow-none focus-visible:ring-0 dark:bg-transparent"
           aria-label="Message composer"
         />
         <button

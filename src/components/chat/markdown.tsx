@@ -1,5 +1,17 @@
+import type { ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { CopyButton } from "./copy-button";
+
+/** Recursively joins the string leaves of a React tree — used to recover a code block's raw text for copying. */
+function textOf(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(textOf).join("");
+  if (node && typeof node === "object" && "props" in node) {
+    return textOf((node as { props: { children?: ReactNode } }).props.children);
+  }
+  return "";
+}
 
 // Assistant replies come back as markdown (headings, tables, fenced code),
 // so they're rendered as markdown rather than dumped as raw text. Styling is
@@ -33,7 +45,13 @@ const COMPONENTS: Components = {
     return <code className="rounded bg-foreground/10 px-1 py-0.5 font-mono text-[0.85em]">{children}</code>;
   },
   pre: ({ children }) => (
-    <pre className="scrollbar-thin overflow-x-auto rounded-lg bg-foreground/5 p-3">{children}</pre>
+    <div className="group/code relative">
+      <pre className="scrollbar-thin overflow-x-auto rounded-lg bg-foreground/5 p-3 pr-9">{children}</pre>
+      <CopyButton
+        text={textOf(children)}
+        className="absolute right-1.5 top-1.5 bg-background/80 opacity-0 transition-opacity group-hover/code:opacity-100"
+      />
+    </div>
   ),
   // Wide tables scroll inside their own container rather than stretching
   // the message bubble past its max width.

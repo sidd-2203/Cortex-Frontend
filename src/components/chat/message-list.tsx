@@ -6,7 +6,16 @@ import type { Message } from "@/contracts/chat";
 import type { ContentBlock, ToolUseBlock, ToolResultBlock, AttachmentBlock } from "@/contracts/content-blocks";
 import { useChatUiStore } from "@/stores/chat-ui-store";
 import { Markdown } from "./markdown";
+import { CopyButton } from "./copy-button";
 import { cn } from "@/lib/utils";
+
+/** The copyable text of a message — its text blocks joined, everything else (tool calls, attachments) omitted. */
+function plainTextOf(blocks: ContentBlock[]): string {
+  return blocks
+    .filter((b): b is Extract<ContentBlock, { type: "text" }> => b.type === "text")
+    .map((b) => b.text)
+    .join("\n\n");
+}
 
 function Avatar({ role }: { role: "user" | "assistant" }) {
   if (role === "assistant") {
@@ -19,20 +28,40 @@ function Avatar({ role }: { role: "user" | "assistant" }) {
   return <div className="size-7 shrink-0 rounded-full bg-secondary" />;
 }
 
-function Bubble({ role, children }: { role: "user" | "assistant"; children: React.ReactNode }) {
+function Bubble({
+  role,
+  copyText,
+  children,
+}: {
+  role: "user" | "assistant";
+  /** Omitted when there's nothing worth copying (e.g. a failed turn). */
+  copyText?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className={cn("flex items-start gap-2.5", role === "user" ? "flex-row-reverse" : "flex-row")}>
-      <Avatar role={role} />
-      <div
-        className={cn(
-          "max-w-[70%] rounded-2xl px-4 py-2.5 text-sm flex flex-col gap-1.5 shadow-sm",
-          role === "user"
-            ? "bg-primary text-primary-foreground rounded-tr-sm"
-            : "bg-card border border-border/60 text-foreground rounded-tl-sm",
-        )}
-      >
-        {children}
+    <div className={cn("group/msg flex flex-col gap-1", role === "user" ? "items-end" : "items-start")}>
+      <div className={cn("flex items-start gap-2.5", role === "user" ? "flex-row-reverse" : "flex-row")}>
+        <Avatar role={role} />
+        <div
+          className={cn(
+            "max-w-[70%] rounded-2xl px-4 py-2.5 text-sm flex flex-col gap-1.5 shadow-sm",
+            role === "user"
+              ? "bg-primary text-primary-foreground rounded-tr-sm"
+              : "bg-card border border-border/60 text-foreground rounded-tl-sm",
+          )}
+        >
+          {children}
+        </div>
       </div>
+      {copyText && (
+        <CopyButton
+          text={copyText}
+          className={cn(
+            "opacity-0 transition-opacity group-hover/msg:opacity-100",
+            role === "user" ? "mr-9" : "ml-9",
+          )}
+        />
+      )}
     </div>
   );
 }
@@ -152,7 +181,7 @@ export function MessageList({ messages, chatId }: { messages: Message[]; chatId:
         if (m.role !== "USER" && m.role !== "ASSISTANT") return null;
         const role = m.role === "USER" ? "user" : "assistant";
         return (
-          <Bubble key={m.id} role={role}>
+          <Bubble key={m.id} role={role} copyText={m.status === "FAILED" ? undefined : plainTextOf(m.content)}>
             {m.status === "FAILED" ? (
               <span className="text-destructive">This turn failed. Try sending again.</span>
             ) : (
@@ -162,7 +191,7 @@ export function MessageList({ messages, chatId }: { messages: Message[]; chatId:
         );
       })}
       {status === "streaming" && (
-        <Bubble role="assistant">
+        <Bubble role="assistant" copyText={streamingText || undefined}>
           {streamingText ? (
             <Markdown>{streamingText}</Markdown>
           ) : (
