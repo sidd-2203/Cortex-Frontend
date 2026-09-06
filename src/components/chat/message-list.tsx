@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { Sparkles, FileText } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Sparkles, FileText, Download, ImageOff } from "lucide-react";
 import type { Message } from "@/contracts/chat";
 import type { ContentBlock, ToolUseBlock, ToolResultBlock, AttachmentBlock } from "@/contracts/content-blocks";
 import { useChatUiStore } from "@/stores/chat-ui-store";
@@ -93,20 +93,73 @@ function extractMedia(value: unknown): MediaItem[] {
   return media;
 }
 
+/** Best-effort filename for the download attribute — falls back to a generic name if the URL has no obvious one. */
+function filenameFor(url: string, type: "image" | "video"): string {
+  try {
+    const last = new URL(url).pathname.split("/").pop();
+    if (last) return last;
+  } catch {
+    // not a parseable URL — fall through to the generic name
+  }
+  return type === "image" ? "image.png" : "video.mp4";
+}
+
+/**
+ * Every image/video we render is a link to a third party (Transloadit's
+ * temporary storage for user uploads — confirmed 24h/~10-retrieval expiry —
+ * and Magica's own CDN for generated results, whose retention we don't
+ * actually know). Rather than guess at a time-based warning, this reacts to
+ * the real thing: if the link has actually gone dead by the time it's
+ * rendered (a chat reopened days later, say), onError swaps in a plain
+ * explanation instead of a broken-image icon. The download button is the
+ * actual mitigation — encourages saving a copy before that happens.
+ */
+function MediaThumbnail({ type, url, downloadName }: { type: "image" | "video"; url: string; downloadName: string }) {
+  const [broken, setBroken] = useState(false);
+
+  if (broken) {
+    return (
+      <div className="flex h-32 w-48 flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-border bg-secondary p-3 text-center">
+        <ImageOff className="size-4 text-muted-foreground" />
+        <span className="text-xs text-muted-foreground">
+          This {type} is no longer available — its link may have expired.
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="group/media relative">
+      {type === "image" ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={url} alt="" className="max-h-64 rounded-lg" onError={() => setBroken(true)} />
+      ) : (
+        <video src={url} controls className="max-h-64 rounded-lg" onError={() => setBroken(true)} />
+      )}
+      <a
+        href={url}
+        download={downloadName}
+        target="_blank"
+        rel="noreferrer"
+        aria-label="Download"
+        title="Download"
+        className="absolute right-1.5 top-1.5 flex size-7 items-center justify-center rounded-full bg-background/80 opacity-0 transition-opacity hover:bg-background group-hover/media:opacity-100"
+      >
+        <Download className="size-3.5" />
+      </a>
+    </div>
+  );
+}
+
 function MediaRow({ label, items }: { label?: string; items: MediaItem[] }) {
   if (items.length === 0) return null;
   return (
     <div className="flex flex-col gap-1">
       {label && <span className="text-[0.7rem] font-medium text-muted-foreground">{label}</span>}
       <div className="flex flex-wrap gap-2">
-        {items.map((m, i) =>
-          m.type === "image" ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img key={i} src={m.url} alt="" className="max-h-64 rounded-lg" />
-          ) : (
-            <video key={i} src={m.url} controls className="max-h-64 rounded-lg" />
-          ),
-        )}
+        {items.map((m, i) => (
+          <MediaThumbnail key={i} type={m.type} url={m.url} downloadName={filenameFor(m.url, m.type)} />
+        ))}
       </div>
     </div>
   );
@@ -141,12 +194,14 @@ function ToolCallPill({ toolUse, result }: { toolUse: ToolUseBlock; result?: Too
 
 /** A user-uploaded file — image/video preview inline, other types as a link. */
 function AttachmentPreview({ block }: { block: AttachmentBlock }) {
-  if (block.attachmentType === "IMAGE") {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={block.url} alt={block.filename ?? "attachment"} className="max-h-64 rounded-lg" />;
-  }
-  if (block.attachmentType === "VIDEO") {
-    return <video src={block.url} controls className="max-h-64 rounded-lg" />;
+  if (block.attachmentType === "IMAGE" || block.attachmentType === "VIDEO") {
+    return (
+      <MediaThumbnail
+        type={block.attachmentType === "IMAGE" ? "image" : "video"}
+        url={block.url}
+        downloadName={block.filename ?? filenameFor(block.url, block.attachmentType === "IMAGE" ? "image" : "video")}
+      />
+    );
   }
   return (
     <a

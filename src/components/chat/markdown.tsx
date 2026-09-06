@@ -35,6 +35,22 @@ const COMPONENTS: Components = {
     <blockquote className="border-l-2 border-border pl-3 text-muted-foreground">{children}</blockquote>
   ),
   hr: () => <hr className="border-border" />,
+  // The model routinely narrates a generated asset's URL as a markdown
+  // image in its own reply text — but the tool_use/tool_result pair that
+  // actually produced it already renders a real preview (see MediaRow in
+  // message-list.tsx). Rendering this as a second <img> would just show
+  // the same picture twice. A plain link keeps the reference without
+  // duplicating the image.
+  img: ({ src, alt }) => (
+    <a
+      href={typeof src === "string" ? src : undefined}
+      target="_blank"
+      rel="noreferrer"
+      className="text-xs underline underline-offset-2"
+    >
+      {alt || "generated image"}
+    </a>
+  ),
   code: ({ className, children }) => {
     // react-markdown gives fenced blocks a language class and inline code
     // none — that's the only reliable way to tell them apart here.

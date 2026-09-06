@@ -2,6 +2,9 @@
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { ArrowUp, Paperclip, X, FileText } from "lucide-react";
+
+// Keep in sync with the Textarea's max-h-48 below (12rem).
+const MAX_TEXTAREA_PX = 192;
 import { Textarea } from "@/components/ui/textarea";
 import { useChatUiStore } from "@/stores/chat-ui-store";
 import { useFileUpload } from "@/hooks/use-file-upload";
@@ -106,6 +109,19 @@ export function Composer({
     if (appliedPreset !== undefined) textareaRef.current?.focus();
   }, [appliedPreset]);
 
+  // Driven in JS rather than the Textarea base component's own
+  // field-sizing-content (which auto-sizes to content and, per spec,
+  // ignores an author-set height while doing it — fighting any max-height
+  // cap instead of respecting it). scrollHeight clamped to MAX_TEXTAREA_PX
+  // is what actually guarantees "grow, then stop and let the user scroll,"
+  // regardless of that CSS feature's quirks in any given browser.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, MAX_TEXTAREA_PX)}px`;
+  }, [value]);
+
   async function submit() {
     const text = value.trim();
     if (!text || isStreaming || isUploading) return;
@@ -168,7 +184,7 @@ export function Composer({
           placeholder="Message Cortex…"
           rows={1}
           disabled={isStreaming}
-          className="min-h-8 max-h-48 resize-none overflow-y-auto border-none bg-transparent px-0 py-1.5 shadow-none focus-visible:ring-0 dark:bg-transparent"
+          className="field-sizing-fixed scrollbar-thin min-h-8 max-h-48 resize-none overflow-y-auto border-none bg-transparent px-0 py-1.5 shadow-none focus-visible:ring-0 dark:bg-transparent"
           aria-label="Message composer"
         />
         <button
