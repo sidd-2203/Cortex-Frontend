@@ -5,6 +5,7 @@ import { Sparkles, FileText } from "lucide-react";
 import type { Message } from "@/contracts/chat";
 import type { ContentBlock, ToolUseBlock, ToolResultBlock, AttachmentBlock } from "@/contracts/content-blocks";
 import { useChatUiStore } from "@/stores/chat-ui-store";
+import { Markdown } from "./markdown";
 import { cn } from "@/lib/utils";
 
 function Avatar({ role }: { role: "user" | "assistant" }) {
@@ -82,7 +83,7 @@ function AttachmentPreview({ block }: { block: AttachmentBlock }) {
  * blocks), and citations. tool_result blocks are skipped on their own;
  * they're folded into the tool_use pill they answer.
  */
-function ContentBlocks({ blocks }: { blocks: ContentBlock[] }) {
+function ContentBlocks({ blocks, role }: { blocks: ContentBlock[]; role: "user" | "assistant" }) {
   const resultByToolUseId = new Map<string, ToolResultBlock>();
   for (const b of blocks) if (b.type === "tool_result") resultByToolUseId.set(b.toolUseId, b);
 
@@ -90,7 +91,11 @@ function ContentBlocks({ blocks }: { blocks: ContentBlock[] }) {
     .map((block, i) => {
       switch (block.type) {
         case "text":
-          return (
+          // Only the assistant writes markdown; a user's own text is shown
+          // exactly as they typed it rather than being reinterpreted.
+          return role === "assistant" ? (
+            <Markdown key={i}>{block.text}</Markdown>
+          ) : (
             <p key={i} className="whitespace-pre-wrap">
               {block.text}
             </p>
@@ -122,37 +127,50 @@ function ContentBlocks({ blocks }: { blocks: ContentBlock[] }) {
   return rendered.length > 0 ? <>{rendered}</> : <span className="text-muted-foreground italic">…</span>;
 }
 
-export function MessageList({ messages }: { messages: Message[] }) {
+export function MessageList({ messages, chatId }: { messages: Message[]; chatId: string | null }) {
   const { status, streamingText, error } = useChatUiStore();
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Jump straight to the bottom when a chat is opened or switched — you
+  // want the latest message, not the top of the history.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [chatId]);
+
+  // Then follow along as content arrives. Scrolling the container directly
+  // (rather than scrollIntoView on a sentinel) keeps this contained to the
+  // message list instead of nudging the whole page.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [messages.length, streamingText]);
 
   return (
-    <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-6 py-6 flex flex-col gap-5">
+    <div ref={scrollRef} className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-6 py-6 flex flex-col gap-5">
       {messages.map((m) => {
         if (m.role !== "USER" && m.role !== "ASSISTANT") return null;
+        const role = m.role === "USER" ? "user" : "assistant";
         return (
-          <Bubble key={m.id} role={m.role === "USER" ? "user" : "assistant"}>
+          <Bubble key={m.id} role={role}>
             {m.status === "FAILED" ? (
               <span className="text-destructive">This turn failed. Try sending again.</span>
             ) : (
-              <ContentBlocks blocks={m.content} />
+              <ContentBlocks blocks={m.content} role={role} />
             )}
           </Bubble>
         );
       })}
       {status === "streaming" && (
         <Bubble role="assistant">
-          <p className="whitespace-pre-wrap">
-            {streamingText || <span className="animate-pulse">thinking…</span>}
-          </p>
+          {streamingText ? (
+            <Markdown>{streamingText}</Markdown>
+          ) : (
+            <span className="animate-pulse">thinking…</span>
+          )}
         </Bubble>
       )}
       {status === "error" && error && <p className="text-center text-sm text-destructive">{error}</p>}
-      <div ref={bottomRef} />
     </div>
   );
 }

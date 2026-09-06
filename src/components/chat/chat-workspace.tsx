@@ -66,8 +66,11 @@ export function ChatWorkspace() {
           </div>
         ) : (
           <>
-            <MessageList messages={data?.items.slice().reverse() ?? []} />
-            <div className="border-t border-border bg-background/80 px-4 py-4 backdrop-blur-sm">
+            <MessageList messages={data?.items.slice().reverse() ?? []} chatId={activeChatId} />
+            {/* min-h-20 matches the sidebar footer's h-20 so the two
+                border-t lines meet as one continuous rule across the app.
+                min- rather than fixed so attachment chips can grow it. */}
+            <div className="flex min-h-20 shrink-0 items-center border-t border-border bg-background px-4">
               <Composer onSend={send} />
             </div>
           </>
