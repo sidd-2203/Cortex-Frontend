@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { sendTurn } from "@/lib/api-client";
+import { useCreateChat } from "@/hooks/use-chat-queries";
 import { useChatUiStore } from "@/stores/chat-ui-store";
 
 /**
@@ -11,19 +12,33 @@ import { useChatUiStore } from "@/stores/chat-ui-store";
  * which talks to Trigger.dev Realtime directly rather than through this
  * request (see api-client's sendTurn for why: this call returns almost
  * immediately instead of waiting on the full LLM completion).
+ *
+ * A null chatId means "draft" — the chat row is created here, on the first
+ * send, rather than when the user clicks New chat. Clicking New chat and
+ * then wandering off shouldn't leave an empty chat behind.
  */
 export function useSendTurn(chatId: string | null) {
   const { getToken } = useAuth();
   const { startRun, fail } = useChatUiStore();
+  const setActiveChat = useChatUiStore((s) => s.setActiveChat);
+  const createChat = useCreateChat();
 
   const send = useCallback(
     async (text: string, attachmentIds: string[] = []) => {
-      if (!chatId) return;
-      const token = await getToken();
       const idempotencyKey = crypto.randomUUID();
 
       try {
-        const envelope = await sendTurn(token, chatId, {
+        let targetChatId = chatId;
+        if (!targetChatId) {
+          const chat = await createChat.mutateAsync(undefined);
+          targetChatId = chat.id;
+          // Before startRun below, since selecting a chat resets the
+          // store's in-flight run fields back to idle.
+          setActiveChat(chat.id);
+        }
+
+        const token = await getToken();
+        const envelope = await sendTurn(token, targetChatId, {
           idempotencyKey,
           content: [{ type: "text", text }],
           attachmentIds,
@@ -33,7 +48,7 @@ export function useSendTurn(chatId: string | null) {
         fail(err instanceof Error ? err.message : "Failed to send message");
       }
     },
-    [chatId, getToken, startRun, fail],
+    [chatId, getToken, startRun, fail, createChat, setActiveChat],
   );
 
   return { send };
