@@ -17,7 +17,7 @@ export function useSendTurn(chatId: string | null) {
   const { startRun, fail } = useChatUiStore();
 
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, attachmentIds: string[] = []) => {
       if (!chatId) return;
       const token = await getToken();
       const idempotencyKey = crypto.randomUUID();
@@ -26,7 +26,7 @@ export function useSendTurn(chatId: string | null) {
         const envelope = await sendTurn(token, chatId, {
           idempotencyKey,
           content: [{ type: "text", text }],
-          attachmentIds: [],
+          attachmentIds,
         });
         startRun(envelope);
       } catch (err) {

@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Sparkles } from "lucide-react";
+import { Sparkles, FileText } from "lucide-react";
 import type { Message } from "@/contracts/chat";
-import type { ContentBlock, ToolUseBlock, ToolResultBlock } from "@/contracts/content-blocks";
+import type { ContentBlock, ToolUseBlock, ToolResultBlock, AttachmentBlock } from "@/contracts/content-blocks";
 import { useChatUiStore } from "@/stores/chat-ui-store";
 import { cn } from "@/lib/utils";
 
@@ -53,6 +53,28 @@ function ToolCallPill({ toolUse, result }: { toolUse: ToolUseBlock; result?: Too
   );
 }
 
+/** A user-uploaded file — image/video preview inline, other types as a link. */
+function AttachmentPreview({ block }: { block: AttachmentBlock }) {
+  if (block.attachmentType === "IMAGE") {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={block.url} alt={block.filename ?? "attachment"} className="max-h-64 rounded-lg" />;
+  }
+  if (block.attachmentType === "VIDEO") {
+    return <video src={block.url} controls className="max-h-64 rounded-lg" />;
+  }
+  return (
+    <a
+      href={block.url}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex w-fit items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs underline"
+    >
+      <FileText className="size-3.5" />
+      {block.filename ?? "attachment"}
+    </a>
+  );
+}
+
 /**
  * Renders ordered content blocks as-is — text, thinking (dimmed, since it's
  * not meant to read as the final answer), tool calls (paired with their
@@ -87,6 +109,8 @@ function ContentBlocks({ blocks }: { blocks: ContentBlock[] }) {
               {block.text}
             </a>
           );
+        case "attachment":
+          return <AttachmentPreview key={i} block={block} />;
         case "tool_result":
           return null; // folded into its tool_use pill above
         default:
