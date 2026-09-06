@@ -131,15 +131,7 @@ export function MessageList({ messages }: { messages: Message[] }) {
   }, [messages.length, streamingText]);
 
   return (
-    <div className="scrollbar-thin flex-1 overflow-y-auto px-6 py-6 flex flex-col gap-5">
-      {messages.length === 0 && status === "idle" && (
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-          <div className="flex size-12 items-center justify-center rounded-2xl bg-accent text-accent-foreground">
-            <Sparkles className="size-6" />
-          </div>
-          <p className="text-sm text-muted-foreground">Send a message to start the conversation.</p>
-        </div>
-      )}
+    <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-6 py-6 flex flex-col gap-5">
       {messages.map((m) => {
         if (m.role !== "USER" && m.role !== "ASSISTANT") return null;
         return (
