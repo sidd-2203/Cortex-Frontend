@@ -4,13 +4,23 @@ import {
   SendTurnRequestSchema,
   SendTurnResponseSchema,
   ActiveRunResponseSchema,
+  UpdateChatRequestSchema,
   cursorPageResponseSchema,
   type ChatSummary,
   type Message,
   type SendTurnRequest,
   type SendTurnResponse,
   type ActiveRunResponse,
+  type UpdateChatRequest,
 } from "@/contracts/chat";
+import {
+  CreateUploadRequestSchema,
+  CreateUploadResponseSchema,
+  AttachmentSchema,
+  type CreateUploadRequest,
+  type CreateUploadResponse,
+  type Attachment,
+} from "@/contracts/uploads";
 import { z } from "zod";
 
 // cortex-backend is a separate Next.js app on its own origin — there's no
@@ -105,4 +115,42 @@ export function getActiveRun(token: string | null, chatId: string): Promise<Acti
   return apiFetchJson(`/api/chats/${chatId}/active-run`, token, ActiveRunResponseSchema);
 }
 
-export type { Message, ChatSummary, SendTurnResponse, ActiveRunResponse };
+export function updateChat(token: string | null, chatId: string, body: UpdateChatRequest): Promise<ChatSummary> {
+  UpdateChatRequestSchema.parse(body);
+  return apiFetchJson(`/api/chats/${chatId}`, token, ChatSummarySchema, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteChat(token: string | null, chatId: string): Promise<void> {
+  await apiFetch(`/api/chats/${chatId}`, token, { method: "DELETE" });
+}
+
+/**
+ * Stage 1 of an upload: ask the backend to create a Transloadit Assembly.
+ * The file's bytes are never sent here — the caller uses the returned
+ * tusEndpoint/assemblyUrl to upload directly to Transloadit (see
+ * use-file-upload.ts), which is what keeps large files off this backend
+ * entirely.
+ */
+export function createUpload(token: string | null, body: CreateUploadRequest): Promise<CreateUploadResponse> {
+  CreateUploadRequestSchema.parse(body);
+  return apiFetchJson("/api/uploads", token, CreateUploadResponseSchema, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Stage 2: poll until the attachment's Transloadit assembly settles. */
+export function getUploadStatus(token: string | null, attachmentId: string): Promise<Attachment> {
+  return apiFetchJson(`/api/uploads/${attachmentId}`, token, AttachmentSchema);
+}
+
+const CreditBalanceResponseSchema = z.object({ balance: z.number().int() });
+
+export function getCreditBalance(token: string | null): Promise<{ balance: number }> {
+  return apiFetchJson("/api/credits", token, CreditBalanceResponseSchema);
+}
+
+export type { Message, ChatSummary, SendTurnResponse, ActiveRunResponse, Attachment };
