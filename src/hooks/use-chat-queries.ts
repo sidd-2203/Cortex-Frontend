@@ -72,6 +72,7 @@ export function useDeleteChat() {
 
 export function useMessages(chatId: string | null) {
   const { getToken } = useAuth();
+  const status = useChatUiStore((s) => s.status);
   return useQuery({
     queryKey: ["messages", chatId],
     queryFn: async () => {
@@ -79,9 +80,20 @@ export function useMessages(chatId: string | null) {
       return listMessages(token, chatId!);
     },
     enabled: !!chatId,
-    // Messages are appended, not edited, once persisted — no need to
-    // refetch on window focus etc. Streaming updates come from the SSE
-    // hook directly, not from re-querying this endpoint.
-    staleTime: Infinity,
+    // Not staleTime: Infinity. That was justified by "messages are appended,
+    // not edited, once persisted" — no longer true: a Trigger.dev retry
+    // re-runs runTurn() for the same run, which resets the existing
+    // assistant message row (status back to STREAMING, content cleared) and
+    // rewrites it on the retry's success. Frozen-forever caching made the
+    // UI depend on exactly one invalidation landing at exactly the right
+    // moment, with no way to recover if it didn't — which is what left a
+    // successful second attempt still showing the first attempt's failure.
+    staleTime: 5_000,
+    // Self-healing for the same reason the active-run query polls (see
+    // use-agent-run-subscription): while a turn is in flight, the row can
+    // change underneath us more than once, and the terminal notification
+    // that would normally trigger a refetch is exactly the thing that can
+    // go missing across a retry.
+    refetchInterval: status === "streaming" ? 10_000 : false,
   });
 }
