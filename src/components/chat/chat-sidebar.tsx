@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { UserButton } from "@clerk/nextjs";
-import { Pin, PinOff, Trash2, CirclePlus, Search, MessageSquare, Zap, KeyRound } from "lucide-react";
+import { Pin, PinOff, Trash2, CirclePlus, Search, MessageSquare, Zap, KeyRound, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -120,7 +120,13 @@ function SearchDialog({
   );
 }
 
-export function ChatSidebar() {
+export function ChatSidebar({
+  collapsed,
+  onCollapsedChange,
+}: {
+  collapsed: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
+}) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [apiKeysOpen, setApiKeysOpen] = useState(false);
   const { data, isLoading } = useChats();
@@ -129,23 +135,53 @@ export function ChatSidebar() {
   const setActiveChat = useChatUiStore((s) => s.setActiveChat);
 
   return (
-    <aside className="flex h-full w-72 shrink-0 flex-col border-r border-border bg-sidebar">
-      <div className="flex h-13 items-center gap-2 px-4">
+    <aside
+      className={cn(
+        "flex h-full shrink-0 flex-col overflow-hidden border-r border-border bg-sidebar transition-[width] duration-200 ease-out",
+        collapsed ? "w-13" : "w-72",
+      )}
+    >
+      <div className={cn("flex h-13 shrink-0 items-center gap-2", collapsed ? "justify-center px-2" : "px-4")}>
         <div className="flex size-6 items-center justify-center rounded-md bg-brand text-brand-foreground text-xs font-bold">
           C
         </div>
-        <span className="flex-1 text-sm font-semibold tracking-tight">Cortex</span>
+        {!collapsed && (
+          <>
+            <span className="flex-1 text-sm font-semibold tracking-tight">Cortex</span>
+            <button
+              onClick={() => setSearchOpen(true)}
+              aria-label="Search tasks"
+              className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+            >
+              <Search className="size-4" />
+            </button>
+          </>
+        )}
         <button
-          onClick={() => setSearchOpen(true)}
-          aria-label="Search tasks"
+          onClick={() => onCollapsedChange(!collapsed)}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
         >
-          <Search className="size-4" />
+          {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
         </button>
       </div>
 
       <SearchDialog open={searchOpen} onOpenChange={setSearchOpen} onSelect={setActiveChat} />
 
+      {collapsed ? (
+        <nav className="flex flex-col items-center gap-1 px-2 pt-2">
+          <button
+            onClick={() => setActiveChat(null)}
+            aria-label="New task"
+            title="New task"
+            className="flex size-8 items-center justify-center rounded-lg text-foreground/80 hover:bg-secondary hover:text-foreground"
+          >
+            <CirclePlus className="size-4" />
+          </button>
+        </nav>
+      ) : (
+        <>
       <nav className="flex flex-col gap-0.5 px-2 pt-2">
         {/* Opens a blank draft — the chat row isn't created until the first
             message is actually sent (see useSendTurn), so clicking this and
@@ -200,6 +236,8 @@ export function ChatSidebar() {
           <UserButton />
         </div>
       </div>
+        </>
+      )}
 
       <ApiKeysDialog open={apiKeysOpen} onOpenChange={setApiKeysOpen} />
     </aside>

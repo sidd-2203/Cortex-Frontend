@@ -53,6 +53,7 @@ export function ChatWorkspace() {
   useAgentRunSubscription(activeChatId);
   // A suggestion click seeds the composer with this text.
   const [suggestion, setSuggestion] = useState<string | undefined>(undefined);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const hasMessages = (data?.items.length ?? 0) > 0;
   // A brand-new draft (no chat row yet) and a selected-but-empty chat get
@@ -61,7 +62,7 @@ export function ChatWorkspace() {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <ChatSidebar />
+      <ChatSidebar collapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
       <div className="flex flex-1 flex-col min-w-0 min-h-0">
         <div className="flex h-13 shrink-0 items-center justify-end px-4">
           <CreditsPill />
