@@ -89,11 +89,6 @@ export type SendTurnResponse = z.infer<typeof SendTurnResponseSchema>;
 // original trigger-time token isn't persisted (short-lived by design), so
 // resuming always mints a new one scoped to the existing run.
 
-export const ActiveRunResponseSchema = RunSubscriptionSchema.nullable();
-export type ActiveRunResponse = z.infer<typeof ActiveRunResponseSchema>;
-
-// --- Run cancellation (POST /api/runs/:runId/cancel) ---------------------
-
 export const RunStatusSchema = z.enum([
   "QUEUED",
   "THINKING",
@@ -105,6 +100,13 @@ export const RunStatusSchema = z.enum([
   "CANCELLED",
 ]);
 export type RunStatus = z.infer<typeof RunStatusSchema>;
+
+export const ActiveRunResponseSchema = RunSubscriptionSchema.extend({
+  status: RunStatusSchema,
+}).nullable();
+export type ActiveRunResponse = z.infer<typeof ActiveRunResponseSchema>;
+
+// --- Run cancellation (POST /api/runs/:runId/cancel) ---------------------
 
 export const CancelRunResponseSchema = z.object({
   status: RunStatusSchema,

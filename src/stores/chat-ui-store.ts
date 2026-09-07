@@ -40,7 +40,14 @@ interface ChatUiState {
   stopping: boolean;
   error: string | null;
   setActiveChat: (chatId: string | null) => void;
-  startRun: (sub: { runId: string; triggerRunId: string; publicAccessToken: string }) => void;
+  /**
+   * `initialStopping` covers reload-recovery specifically — resuming a run
+   * that's already in the backend's STOPPING state (see getActiveRun) needs
+   * to render as "stopping," not as a fresh, freely-running turn, so the
+   * button and banner are honest immediately rather than only catching up
+   * once the next stream part arrives.
+   */
+  startRun: (sub: { runId: string; triggerRunId: string; publicAccessToken: string; initialStopping?: boolean }) => void;
   setStreamingText: (text: string) => void;
   setLiveToolBlocks: (blocks: ContentBlock[]) => void;
   setPendingApprovals: (approvals: ApprovalRequiredEvent[]) => void;
@@ -74,7 +81,7 @@ export const useChatUiStore = create<ChatUiState>((set) => ({
       streamingText: "",
       liveToolBlocks: [],
       pendingApprovals: [],
-      stopping: false,
+      stopping: sub.initialStopping ?? false,
       error: null,
     }),
   setStreamingText: (text) => set({ streamingText: text }),
@@ -82,5 +89,9 @@ export const useChatUiStore = create<ChatUiState>((set) => ({
   setPendingApprovals: (approvals) => set({ pendingApprovals: approvals }),
   setStopping: (stopping) => set({ stopping }),
   finish: () => set({ ...idleFields }),
-  fail: (message) => set({ status: "error", error: message }),
+  // Spreads idleFields rather than just { status, error } so `stopping`
+  // (and every other in-flight field) can't outlive the run that set it —
+  // a run that fails while winding down from Stop must not leave the
+  // button stuck showing Stop for a turn that's already gone.
+  fail: (message) => set({ ...idleFields, status: "error", error: message }),
 }));

@@ -98,7 +98,15 @@ export function useAgentRunSubscription(chatId: string | null) {
     // Only resume if we're not already tracking a run — don't clobber a
     // send that just happened locally in this same tab.
     if (resumed && status === "idle" && !triggerRunId) {
-      startRun({ runId: resumed.runId, triggerRunId: resumed.triggerRunId, publicAccessToken: resumed.publicAccessToken });
+      startRun({
+        runId: resumed.runId,
+        triggerRunId: resumed.triggerRunId,
+        publicAccessToken: resumed.publicAccessToken,
+        // A reload landing mid-Stop should show "stopping," not a fresh
+        // freely-running turn — resumed.status is the backend's own record
+        // of that, not a guess.
+        initialStopping: resumed.status === "STOPPING",
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resumed]);
