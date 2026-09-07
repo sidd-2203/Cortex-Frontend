@@ -99,6 +99,13 @@ export function useAgentRunSubscription(chatId: string | null) {
     enabled: !!chatId,
     staleTime: 0,
     refetchInterval: status === "streaming" ? 10_000 : false,
+    // staleTime: 0 means this query is immediately stale, so without this
+    // it also refetches on every window-focus event forever — regardless
+    // of run status, not just the bounded 10s interval above. The one-shot
+    // fetch on mount/chat-switch is what reload recovery actually needs;
+    // once that's answered and nothing's streaming, there's no reason to
+    // keep checking every time the tab regains focus.
+    refetchOnWindowFocus: false,
   });
 
   useEffect(() => {
