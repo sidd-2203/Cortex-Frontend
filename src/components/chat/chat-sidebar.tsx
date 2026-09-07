@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { UserButton } from "@clerk/nextjs";
-import { Pin, PinOff, Trash2, SquarePen, Search, Zap } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { Pin, PinOff, Trash2, CirclePlus, Search, MessageSquare, Zap } from "lucide-react";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
@@ -32,7 +32,7 @@ function ChatRow({ chat, isActive, onSelect }: { chat: ChatSummary; isActive: bo
           "shrink-0 rounded-md p-1 hover:bg-foreground/10",
           chat.pinned ? "opacity-100" : "opacity-0 group-hover:opacity-100",
         )}
-        aria-label={chat.pinned ? "Unpin chat" : "Pin chat"}
+        aria-label={chat.pinned ? "Unpin task" : "Pin task"}
         title={chat.pinned ? "Unpin" : "Pin"}
       >
         {chat.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
@@ -44,7 +44,7 @@ function ChatRow({ chat, isActive, onSelect }: { chat: ChatSummary; isActive: bo
           }
         }}
         className="shrink-0 rounded-md p-1 opacity-0 hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
-        aria-label="Delete chat"
+        aria-label="Delete task"
         title="Delete"
       >
         <Trash2 className="size-3.5" />
@@ -53,55 +53,115 @@ function ChatRow({ chat, isActive, onSelect }: { chat: ChatSummary; isActive: bo
   );
 }
 
+/**
+ * Quick-find modal, opened from the header's search icon — a separate,
+ * throwaway query from the sidebar's own always-visible chat list, closed
+ * (and cleared) on select or Escape (the dialog primitive already closes on
+ * Escape itself, so the "esc" badge is never a lie).
+ */
+function SearchDialog({
+  open,
+  onOpenChange,
+  onSelect,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSelect: (chatId: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const { data } = useChats(query || undefined);
+
+  function handleOpenChange(next: boolean) {
+    if (!next) setQuery("");
+    onOpenChange(next);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent showCloseButton={false} className="top-[22%] max-w-lg translate-y-0 gap-0 p-0">
+        <div className="flex items-center gap-2 border-b border-border px-3.5 py-3">
+          <Search className="size-4 shrink-0 text-muted-foreground" />
+          <input
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search"
+            aria-label="Search tasks"
+            className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+          />
+          <kbd className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">
+            esc
+          </kbd>
+        </div>
+        <div className="max-h-80 overflow-y-auto p-2">
+          {data && data.items.length > 0 && (
+            <p className="px-2 pt-1 pb-1.5 text-xs font-medium text-muted-foreground">Tasks</p>
+          )}
+          {data?.items.length === 0 && (
+            <p className="px-2 py-3 text-center text-xs text-muted-foreground">No matching tasks.</p>
+          )}
+          {data?.items.map((chat) => (
+            <button
+              key={chat.id}
+              onClick={() => {
+                onSelect(chat.id);
+                handleOpenChange(false);
+              }}
+              className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-sm hover:bg-secondary"
+            >
+              <MessageSquare className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="truncate">{chat.title}</span>
+            </button>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function ChatSidebar() {
-  const [search, setSearch] = useState("");
-  const { data, isLoading } = useChats(search || undefined);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const { data, isLoading } = useChats();
   const { data: credits } = useCreditBalance();
   const activeChatId = useChatUiStore((s) => s.activeChatId);
   const setActiveChat = useChatUiStore((s) => s.setActiveChat);
 
   return (
     <aside className="flex h-full w-72 shrink-0 flex-col border-r border-border bg-sidebar">
-      <div className="flex items-center gap-2 px-4 py-4">
+      <div className="flex h-13 items-center gap-2 px-4">
         <div className="flex size-6 items-center justify-center rounded-md bg-brand text-brand-foreground text-xs font-bold">
           C
         </div>
-        <span className="text-sm font-semibold tracking-tight">Cortex</span>
+        <span className="flex-1 text-sm font-semibold tracking-tight">Cortex</span>
+        <button
+          onClick={() => setSearchOpen(true)}
+          aria-label="Search tasks"
+          className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+        >
+          <Search className="size-4" />
+        </button>
       </div>
 
-      <nav className="flex flex-col gap-0.5 px-2">
+      <SearchDialog open={searchOpen} onOpenChange={setSearchOpen} onSelect={setActiveChat} />
+
+      <nav className="flex flex-col gap-0.5 px-2 pt-2">
         {/* Opens a blank draft — the chat row isn't created until the first
             message is actually sent (see useSendTurn), so clicking this and
-            walking away doesn't leave an empty "New chat" behind. */}
+            walking away doesn't leave an empty "New task" behind. */}
         <button
           onClick={() => setActiveChat(null)}
           className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium hover:bg-secondary"
         >
-          <SquarePen className="size-4" />
-          New chat
+          <CirclePlus className="size-4" />
+          New task
         </button>
       </nav>
 
-      <div className="px-2 pt-2 pb-1">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search chats…"
-            aria-label="Search chats"
-            className="h-8 rounded-lg border-transparent bg-secondary pl-8 text-sm shadow-none"
-          />
-        </div>
-      </div>
-
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 mt-1">
         <nav className="flex flex-col gap-0.5 p-2">
           {isLoading && <p className="text-xs text-muted-foreground px-2 py-1.5">Loading…</p>}
           {!isLoading && data?.items.length === 0 && (
-            <p className="text-xs text-muted-foreground px-2 py-1.5">
-              {search ? "No matching chats." : "No chats yet."}
-            </p>
+            <p className="text-xs text-muted-foreground px-2 py-1.5">No tasks yet.</p>
           )}
           {data?.items.map((chat) => (
             <ChatRow

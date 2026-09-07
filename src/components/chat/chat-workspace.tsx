@@ -1,15 +1,28 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Zap } from "lucide-react";
 import { useChats, useMessages } from "@/hooks/use-chat-queries";
 import { useSendTurn } from "@/hooks/use-send-turn";
 import { useAgentRunSubscription } from "@/hooks/use-agent-run-subscription";
+import { useCreditBalance } from "@/hooks/use-credits";
 import { useChatUiStore } from "@/stores/chat-ui-store";
 import { MessageList } from "./message-list";
 import { Composer } from "./composer";
 import { ChatSidebar } from "./chat-sidebar";
 import { PromptSuggestions } from "./prompt-suggestions";
+
+/** Real balance only — no fabricated plan tier or usage/billing links, since Cortex has no billing UI behind them. */
+function CreditsPill() {
+  const { data: credits } = useCreditBalance();
+  if (!credits) return null;
+  return (
+    <div className="flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium shadow-sm">
+      <Zap className="size-3.5 text-brand" />
+      {credits.balance.toLocaleString()}
+    </div>
+  );
+}
 
 export function ChatWorkspace() {
   const activeChatId = useChatUiStore((s) => s.activeChatId);
@@ -50,6 +63,9 @@ export function ChatWorkspace() {
     <div className="flex h-screen overflow-hidden">
       <ChatSidebar />
       <div className="flex flex-1 flex-col min-w-0 min-h-0">
+        <div className="flex h-13 shrink-0 items-center justify-end px-4">
+          <CreditsPill />
+        </div>
         {isLoading ? (
           <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">Loading…</div>
         ) : showEmptyState ? (
@@ -61,16 +77,17 @@ export function ChatWorkspace() {
               <h1 className="text-2xl font-semibold tracking-tight">What are we building today?</h1>
               <p className="text-sm text-muted-foreground">Ask anything, or attach a file to get started.</p>
             </div>
-            <Composer onSend={send} className="w-full max-w-2xl" presetText={suggestion} />
+            <Composer onSend={send} variant="hero" className="w-full max-w-2xl" presetText={suggestion} />
             <PromptSuggestions onSelect={setSuggestion} />
           </div>
         ) : (
           <>
             <MessageList messages={data?.items.slice().reverse() ?? []} chatId={activeChatId} />
-            {/* min-h-20 matches the sidebar footer's h-20 so the two
-                border-t lines meet as one continuous rule across the app.
+            {/* min-h-20 matches the sidebar footer's h-20 for visual
+                alignment. No border-t here — the reference just floats the
+                composer on the page background, no divider line above it.
                 min- rather than fixed so attachment chips can grow it. */}
-            <div className="flex min-h-20 shrink-0 items-center border-t border-border bg-background px-4">
+            <div className="flex min-h-20 shrink-0 items-center bg-background px-4">
               <Composer onSend={send} />
             </div>
           </>
