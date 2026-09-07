@@ -49,6 +49,13 @@ export function useSendTurn(chatId: string | null) {
           attachmentIds,
         });
         startRun(envelope);
+        // The backend already persisted this message synchronously, before
+        // it even dispatched the run — but nothing refetches the message
+        // list until the whole turn completes (see onComplete in
+        // useAgentRunSubscription), so your own message was invisible for
+        // the entire run duration. Barely noticeable when a turn took a
+        // few seconds; glaring once a tool call can take minutes.
+        void queryClient.invalidateQueries({ queryKey: ["messages", targetChatId] });
       } catch (err) {
         fail(err instanceof Error ? err.message : "Failed to send message");
         // A dispatch failure persists a real FAILED assistant message

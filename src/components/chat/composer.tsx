@@ -72,11 +72,13 @@ function AttachmentChip({
 }
 
 /**
- * A single seamless rounded-full pill with the attach/send icons flush
- * inside it, rather than a bordered card with separate buttons beside it.
- * The caller controls placement (bottom-pinned bar vs. centered on an empty
+ * A single seamless rounded bar with the attach/send icons flush inside it,
+ * rather than a bordered card with separate buttons beside it. Fixed-radius
+ * (rounded-3xl), not rounded-full — this box's height grows with a
+ * multi-line message, and a pill radius only looks right at one height. The
+ * caller controls placement (bottom-pinned bar vs. centered on an empty
  * chat) via `className` on the outer wrapper — this component only owns the
- * pill and the attachment chips above it.
+ * bar and the attachment chips above it.
  */
 export function Composer({
   onSend,
@@ -160,7 +162,12 @@ export function Composer({
           ))}
         </div>
       )}
-      <div className="flex items-end gap-1 rounded-full border border-border bg-card py-1.5 pl-2 pr-1.5 shadow-sm focus-within:ring-2 focus-within:ring-ring/30">
+      {/* rounded-3xl, not rounded-full: this box's height isn't fixed (a
+          multi-line paste grows it up to MAX_TEXTAREA_PX) — a proportional
+          "always fully round" radius looks like a pill at ~44px but turns
+          into an exaggerated oval once it's ~190px tall. A fixed radius
+          reads as a pill when short and a properly rounded box when tall. */}
+      <div className="flex items-end gap-1 rounded-3xl border border-border bg-card py-1.5 pl-2 pr-1.5 shadow-sm focus-within:ring-2 focus-within:ring-ring/30">
         <input
           ref={fileInputRef}
           type="file"

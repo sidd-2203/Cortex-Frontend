@@ -43,10 +43,15 @@ component**; always reach for the token so dark mode stays correct for free.
 
 ## Component conventions
 
-- **Composer**: a seamless rounded-full (pill) bar, not a bordered card with
-  a separate button beside it. Icons (attach, send) sit flush *inside* the
-  pill at each end. Send is a filled circular `primary`-colored icon button
-  embedded in the pill's right edge.
+- **Composer**: a seamless rounded bar, not a bordered card with a separate
+  button beside it. Icons (attach, send) sit flush *inside* it at each end.
+  Send is a filled circular `primary`-colored icon button embedded in its
+  right edge. **`rounded-3xl`, not `rounded-full`** — this box's height is
+  not fixed (a multi-line paste grows it up to a capped max-height, then
+  scrolls), and `rounded-full` only looks like a pill at one specific
+  height; at the tall end it turns into an exaggerated oval. Found this by
+  shipping it wrong first — don't reintroduce it on a future "make it look
+  more like a pill" pass.
 - **Sidebar top**: nav-style rows (icon + label, no button chrome) — "+ New
   chat" reads like a nav item, not a bordered/filled `Button` component.
 - **Sidebar footer**: this is where account-adjacent chrome lives — credits
@@ -59,9 +64,11 @@ component**; always reach for the token so dark mode stays correct for free.
   the bottom when there's no active content yet (chat with no messages,
   landing states). Once there's content, the composer moves to its normal
   pinned-bottom position.
-- **Radius**: large and consistent — `--radius: 0.9rem` as the base, pill
-  (`rounded-full`) for the composer and small chips/badges. Don't mix in
-  sharp corners anywhere.
+- **Radius**: large and consistent — `--radius: 0.9rem` as the base.
+  `rounded-full` only for elements with a genuinely fixed height (small
+  chips/badges, circular icon buttons) — anything that can grow taller with
+  its content (the composer) needs a fixed radius like `rounded-3xl`
+  instead, for the reason above. Don't mix in sharp corners anywhere.
 - **No gradient washes, no colored page backgrounds.** An earlier pass on
   this project used a radial-gradient indigo wash on `body` — that was
   wrong and has been removed. Flat `background` only.
