@@ -49,6 +49,11 @@ export function useSendTurn(chatId: string | null) {
           attachmentIds,
         });
         startRun(envelope);
+        // The active-run query may still be holding the null response from
+        // before this turn was dispatched. Refresh it now so the reload/
+        // terminal-state safety net observes this actual run before it ever
+        // decides a later null means completion.
+        void queryClient.invalidateQueries({ queryKey: ["active-run", targetChatId] });
         // The backend already persisted this message synchronously, before
         // it even dispatched the run — but nothing refetches the message
         // list until the whole turn completes (see onComplete in

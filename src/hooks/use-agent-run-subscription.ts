@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRealtimeRun, useRealtimeStream } from "@trigger.dev/react-hooks";
@@ -71,6 +71,11 @@ function buildPendingApprovals(events: ToolStreamEvent[]): ApprovalRequiredEvent
 export function useAgentRunSubscription(chatId: string | null) {
   const { getToken } = useAuth();
   const queryClient = useQueryClient();
+  // `resumed` can legitimately be null from the query that ran before this
+  // tab dispatched its own run. Only a non-null response for the *current*
+  // run proves a later null is a terminal state, rather than that stale
+  // pre-dispatch response.
+  const observedActiveRunId = useRef<string | null>(null);
   const {
     status,
     triggerRunId,
@@ -126,6 +131,10 @@ export function useAgentRunSubscription(chatId: string | null) {
   }, [resumed]);
 
   useEffect(() => {
+    if (resumed?.triggerRunId === triggerRunId) {
+      observedActiveRunId.current = triggerRunId;
+    }
+
     // The fallback itself: the frontend still thinks this run is live, but
     // the backend's own periodic check (above) says there's no active run
     // for this chat any more — the terminal Realtime event never arrived.
@@ -133,7 +142,7 @@ export function useAgentRunSubscription(chatId: string | null) {
     // completed fine, only the notification of that was lost, and the
     // persisted messages (refetched here) are the real source of truth
     // either way.
-    if (status === "streaming" && triggerRunId && resumed === null) {
+    if (status === "streaming" && triggerRunId && resumed === null && observedActiveRunId.current === triggerRunId) {
       finish();
       if (chatId) {
         queryClient.invalidateQueries({ queryKey: ["messages", chatId] });
