@@ -92,6 +92,25 @@ export type SendTurnResponse = z.infer<typeof SendTurnResponseSchema>;
 export const ActiveRunResponseSchema = RunSubscriptionSchema.nullable();
 export type ActiveRunResponse = z.infer<typeof ActiveRunResponseSchema>;
 
+// --- Run cancellation (POST /api/runs/:runId/cancel) ---------------------
+
+export const RunStatusSchema = z.enum([
+  "QUEUED",
+  "THINKING",
+  "WORKING",
+  "WAITING",
+  "STOPPING",
+  "COMPLETE",
+  "FAILED",
+  "CANCELLED",
+]);
+export type RunStatus = z.infer<typeof RunStatusSchema>;
+
+export const CancelRunResponseSchema = z.object({
+  status: RunStatusSchema,
+});
+export type CancelRunResponse = z.infer<typeof CancelRunResponseSchema>;
+
 // --- Chat management -----------------------------------------------------
 
 export const CreateChatRequestSchema = z.object({

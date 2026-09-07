@@ -5,6 +5,7 @@ import {
   SendTurnResponseSchema,
   ActiveRunResponseSchema,
   UpdateChatRequestSchema,
+  CancelRunResponseSchema,
   cursorPageResponseSchema,
   type ChatSummary,
   type Message,
@@ -12,7 +13,14 @@ import {
   type SendTurnResponse,
   type ActiveRunResponse,
   type UpdateChatRequest,
+  type CancelRunResponse,
 } from "@/contracts/chat";
+import {
+  ResolveWaitpointRequestSchema,
+  ResolveWaitpointResponseSchema,
+  type ResolveWaitpointRequest,
+  type ResolveWaitpointResponse,
+} from "@/contracts/waitpoints";
 import {
   CreateUploadRequestSchema,
   CreateUploadResponseSchema,
@@ -113,6 +121,32 @@ export function sendTurn(
 /** Reload recovery: is there an in-flight run on this chat to resume watching? */
 export function getActiveRun(token: string | null, chatId: string): Promise<ActiveRunResponse> {
   return apiFetchJson(`/api/chats/${chatId}/active-run`, token, ActiveRunResponseSchema);
+}
+
+/**
+ * Answers a human approval waitpoint the run is parked on. Idempotent
+ * server-side — a double submission for an already-resolved waitpoint comes
+ * back with its current status instead of erroring.
+ */
+export function resolveWaitpoint(
+  token: string | null,
+  waitpointToken: string,
+  body: ResolveWaitpointRequest,
+): Promise<ResolveWaitpointResponse> {
+  ResolveWaitpointRequestSchema.parse(body);
+  return apiFetchJson(`/api/waitpoints/${waitpointToken}/resolve`, token, ResolveWaitpointResponseSchema, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Asks an in-flight run to stop. Cooperative: the backend flips the run to
+ * STOPPING and the task winds down at its next checkpoint, so this returns
+ * long before the turn actually ends.
+ */
+export function cancelRun(token: string | null, runId: string): Promise<CancelRunResponse> {
+  return apiFetchJson(`/api/runs/${runId}/cancel`, token, CancelRunResponseSchema, { method: "POST" });
 }
 
 export function updateChat(token: string | null, chatId: string, body: UpdateChatRequest): Promise<ChatSummary> {

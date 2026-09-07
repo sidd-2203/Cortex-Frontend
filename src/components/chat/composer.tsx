@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { ArrowUp, Paperclip, X, FileText } from "lucide-react";
-
-// Keep in sync with the Textarea's max-h-48 below (12rem).
-const MAX_TEXTAREA_PX = 192;
+import { useAuth } from "@clerk/nextjs";
+import { ArrowUp, Paperclip, Square, X, FileText } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { useChatUiStore } from "@/stores/chat-ui-store";
 import { useFileUpload } from "@/hooks/use-file-upload";
+import { cancelRun } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+
+// Keep in sync with the Textarea's max-h-48 below (12rem).
+const MAX_TEXTAREA_PX = 192;
 
 function AttachmentChip({
   file,
@@ -72,21 +74,26 @@ function AttachmentChip({
 }
 
 /**
- * A single seamless rounded bar with the attach/send icons flush inside it,
- * rather than a bordered card with separate buttons beside it. Fixed-radius
+ * A single seamless rounded box, icons flush inside it rather than a
+ * bordered card with separate buttons beside it. Fixed-radius
  * (rounded-3xl), not rounded-full — this box's height grows with a
- * multi-line message, and a pill radius only looks right at one height. The
- * caller controls placement (bottom-pinned bar vs. centered on an empty
- * chat) via `className` on the outer wrapper — this component only owns the
- * bar and the attachment chips above it.
+ * multi-line message, and a pill radius only looks right at one height.
+ *
+ * The reference uses the same tall shape everywhere — text on its own
+ * line, icon row below it — for both the empty-chat landing screen and the
+ * normal bottom-pinned composer; only the placeholder copy differs between
+ * `hero` and `bar`. The caller picks via `variant` and controls outer
+ * placement via `className`.
  */
 export function Composer({
   onSend,
   className,
+  variant = "bar",
   presetText,
 }: {
   onSend: (text: string, attachmentIds: string[]) => Promise<void>;
   className?: string;
+  variant?: "hero" | "bar";
   /** Set from outside (e.g. a suggestion card) to seed the composer and focus it. */
   presetText?: string;
 }) {
@@ -100,9 +107,19 @@ export function Composer({
     setValue(presetText);
   }
   const status = useChatUiStore((s) => s.status);
-  const isStreaming = status === "streaming";
+  const runId = useChatUiStore((s) => s.runId);
+  const stopping = useChatUiStore((s) => s.stopping);
+  const setStopping = useChatUiStore((s) => s.setStopping);
+  // status only flips to "streaming" once sendTurn's response comes back
+  // and startRun() fires — there's a real gap before that (create-chat +
+  // dispatch round trip) where the store still says "idle". `dispatching`
+  // covers exactly that gap, so the stop icon appears the instant Send is
+  // pressed rather than only once the network round trip finishes.
+  const [dispatching, setDispatching] = useState(false);
+  const isStreaming = status === "streaming" || dispatching;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { getToken } = useAuth();
   const { pending, addFile, removeAttachment, clear, readyAttachmentIds, isUploading } = useFileUpload();
 
   // Focusing is a real imperative DOM action, so this part does belong in
@@ -130,7 +147,34 @@ export function Composer({
     setValue("");
     const attachmentIds = readyAttachmentIds;
     clear();
-    await onSend(text, attachmentIds);
+    setDispatching(true);
+    try {
+      await onSend(text, attachmentIds);
+    } finally {
+      // A no-op once the real run has started (status is "streaming" by
+      // then regardless), and what actually resets this on a dispatch
+      // failure — onSend's own catch calls fail(), which sets status to
+      // "error", not "streaming", so isStreaming needs this flag cleared
+      // or the button would be stuck showing Stop for a run that never started.
+      setDispatching(false);
+    }
+  }
+
+  async function stop() {
+    if (!runId || stopping) return;
+    // Optimistic: the button and the thread both need to say "winding
+    // down" immediately, and the run's own terminal status is what
+    // ultimately clears this (finish/fail reset the store).
+    setStopping(true);
+    try {
+      const token = await getToken();
+      await cancelRun(token, runId);
+    } catch {
+      // The run may have finished on its own in the same moment — either
+      // way there's nothing left to stop, so drop back rather than
+      // stranding the button in a permanent "stopping" state.
+      setStopping(false);
+    }
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -145,6 +189,55 @@ export function Composer({
     for (const file of files) void addFile(file);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
+
+  const fileInput = (
+    <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => handleFilesSelected(e.target.files)} />
+  );
+
+  const attachButton = (
+    <button
+      onClick={() => fileInputRef.current?.click()}
+      disabled={isStreaming}
+      aria-label="Attach a file"
+      className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-50"
+    >
+      <Paperclip className="size-4" />
+    </button>
+  );
+
+  // One button, two jobs: send when idle, stop the run while it's
+  // streaming. The stop is cooperative — the backend flips the run to
+  // STOPPING and the task winds down at its next checkpoint — so this
+  // returns immediately while the turn takes a moment to actually end,
+  // which is what `stopping` communicates.
+  const sendButton = (
+    <button
+      onClick={() => (isStreaming ? void stop() : void submit())}
+      disabled={isStreaming ? !runId || stopping : isUploading || !value.trim()}
+      aria-label={isStreaming ? "Stop" : "Send"}
+      title={isStreaming ? "Stop after the current step" : undefined}
+      className={cn(
+        "flex size-8 shrink-0 items-center justify-center rounded-full transition-opacity disabled:opacity-40",
+        isStreaming ? "bg-destructive text-destructive-foreground" : "bg-primary text-primary-foreground hover:opacity-90",
+      )}
+    >
+      {isStreaming ? <Square className="size-3 fill-current" /> : <ArrowUp className="size-4" />}
+    </button>
+  );
+
+  const textarea = (
+    <Textarea
+      ref={textareaRef}
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onKeyDown={handleKeyDown}
+      placeholder={variant === "hero" ? "Assign a task or ask anything…" : "Message Cortex…"}
+      rows={1}
+      disabled={isStreaming}
+      className="field-sizing-fixed scrollbar-thin min-h-8 max-h-48 resize-none overflow-y-auto border-none bg-transparent px-0 py-1.5 shadow-none focus-visible:ring-0 dark:bg-transparent"
+      aria-label="Message composer"
+    />
+  );
 
   return (
     <div className={cn("mx-auto flex w-full max-w-2xl flex-col gap-2", className)}>
@@ -162,46 +255,26 @@ export function Composer({
           ))}
         </div>
       )}
+      {fileInput}
       {/* rounded-3xl, not rounded-full: this box's height isn't fixed (a
           multi-line paste grows it up to MAX_TEXTAREA_PX) — a proportional
           "always fully round" radius looks like a pill at ~44px but turns
           into an exaggerated oval once it's ~190px tall. A fixed radius
-          reads as a pill when short and a properly rounded box when tall. */}
-      <div className="flex items-end gap-1 rounded-3xl border border-border bg-card py-1.5 pl-2 pr-1.5 shadow-sm focus-within:ring-2 focus-within:ring-ring/30">
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          className="hidden"
-          onChange={(e) => handleFilesSelected(e.target.files)}
-        />
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={isStreaming}
-          aria-label="Attach a file"
-          className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-50"
-        >
-          <Paperclip className="size-4" />
-        </button>
-        <Textarea
-          ref={textareaRef}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Message Cortex…"
-          rows={1}
-          disabled={isStreaming}
-          className="field-sizing-fixed scrollbar-thin min-h-8 max-h-48 resize-none overflow-y-auto border-none bg-transparent px-0 py-1.5 shadow-none focus-visible:ring-0 dark:bg-transparent"
-          aria-label="Message composer"
-        />
-        <button
-          onClick={() => void submit()}
-          disabled={isStreaming || isUploading || !value.trim()}
-          aria-label={isStreaming ? "Sending" : "Send"}
-          className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
-        >
-          <ArrowUp className="size-4" />
-        </button>
+          reads as a pill when short and a properly rounded box when tall.
+          Same tall shape in both variants — text on its own line, icon row
+          below — matching the reference's active-chat composer, which is
+          just as big as the landing one rather than a compact single row. */}
+      <div
+        className={cn(
+          "flex flex-col gap-2 rounded-3xl border border-border px-4 py-3 shadow-sm focus-within:ring-2 focus-within:ring-ring/30",
+          variant === "hero" ? "bg-secondary" : "bg-card",
+        )}
+      >
+        {textarea}
+        <div className="flex items-center justify-between">
+          {attachButton}
+          {sendButton}
+        </div>
       </div>
     </div>
   );
