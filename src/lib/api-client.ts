@@ -22,6 +22,14 @@ import {
   type ResolveWaitpointResponse,
 } from "@/contracts/waitpoints";
 import {
+  ListApiKeysResponseSchema,
+  CreateApiKeyRequestSchema,
+  CreateApiKeyResponseSchema,
+  type ListApiKeysResponse,
+  type CreateApiKeyRequest,
+  type CreateApiKeyResponse,
+} from "@/contracts/api-keys";
+import {
   CreateUploadRequestSchema,
   CreateUploadResponseSchema,
   AttachmentSchema,
@@ -185,6 +193,24 @@ const CreditBalanceResponseSchema = z.object({ balance: z.number().int() });
 
 export function getCreditBalance(token: string | null): Promise<{ balance: number }> {
   return apiFetchJson("/api/credits", token, CreditBalanceResponseSchema);
+}
+
+/** Self-serve public-API key management — Clerk-authed, distinct from the keys' own auth to /api/v1. */
+export function listApiKeys(token: string | null): Promise<ListApiKeysResponse> {
+  return apiFetchJson("/api/keys", token, ListApiKeysResponseSchema);
+}
+
+/** The response's `key` field is the full secret, shown here exactly once. */
+export function createApiKey(token: string | null, body: CreateApiKeyRequest): Promise<CreateApiKeyResponse> {
+  CreateApiKeyRequestSchema.parse(body);
+  return apiFetchJson("/api/keys", token, CreateApiKeyResponseSchema, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function revokeApiKey(token: string | null, id: string): Promise<void> {
+  await apiFetch(`/api/keys/${id}`, token, { method: "DELETE" });
 }
 
 export type { Message, ChatSummary, SendTurnResponse, ActiveRunResponse, Attachment };

@@ -84,6 +84,12 @@ export function useAgentRunSubscription(chatId: string | null) {
   } = useChatUiStore();
 
   // --- 1. Reload recovery -------------------------------------------------
+  // Also doubles as a safety net while a run is in flight (refetchInterval
+  // below): Realtime's onComplete (source #2) is the fast path, but it
+  // depends on a live connection that a backgrounded tab or a dropped
+  // socket can silently miss. Polling the backend's own authoritative
+  // status is what guarantees the button can't get stuck showing Stop
+  // forever for a run that already finished — see the effect below.
   const { data: resumed } = useQuery({
     queryKey: ["active-run", chatId],
     queryFn: async () => {
@@ -92,6 +98,7 @@ export function useAgentRunSubscription(chatId: string | null) {
     },
     enabled: !!chatId,
     staleTime: 0,
+    refetchInterval: status === "streaming" ? 10_000 : false,
   });
 
   useEffect(() => {
@@ -110,6 +117,24 @@ export function useAgentRunSubscription(chatId: string | null) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resumed]);
+
+  useEffect(() => {
+    // The fallback itself: the frontend still thinks this run is live, but
+    // the backend's own periodic check (above) says there's no active run
+    // for this chat any more — the terminal Realtime event never arrived.
+    // Resolved as a normal finish rather than an error: the run itself
+    // completed fine, only the notification of that was lost, and the
+    // persisted messages (refetched here) are the real source of truth
+    // either way.
+    if (status === "streaming" && triggerRunId && resumed === null) {
+      finish();
+      if (chatId) {
+        queryClient.invalidateQueries({ queryKey: ["messages", chatId] });
+        queryClient.invalidateQueries({ queryKey: ["chats"] });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resumed, status, triggerRunId]);
 
   // --- 2. Live subscription ------------------------------------------------
   const enabled = status === "streaming" && !!triggerRunId && !!publicAccessToken;

@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { UserButton } from "@clerk/nextjs";
-import { Pin, PinOff, Trash2, CirclePlus, Search, MessageSquare, Zap } from "lucide-react";
+import { Pin, PinOff, Trash2, CirclePlus, Search, MessageSquare, Zap, KeyRound } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { ApiKeysDialog } from "./api-keys-dialog";
 import { cn } from "@/lib/utils";
 import { useChats, useTogglePinChat, useDeleteChat } from "@/hooks/use-chat-queries";
 import { useCreditBalance } from "@/hooks/use-credits";
@@ -107,7 +108,7 @@ function SearchDialog({
                 onSelect(chat.id);
                 handleOpenChange(false);
               }}
-              className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-sm hover:bg-secondary"
+              className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-sm text-foreground/80 hover:bg-secondary hover:text-foreground"
             >
               <MessageSquare className="size-3.5 shrink-0 text-muted-foreground" />
               <span className="truncate">{chat.title}</span>
@@ -121,6 +122,7 @@ function SearchDialog({
 
 export function ChatSidebar() {
   const [searchOpen, setSearchOpen] = useState(false);
+  const [apiKeysOpen, setApiKeysOpen] = useState(false);
   const { data, isLoading } = useChats();
   const { data: credits } = useCreditBalance();
   const activeChatId = useChatUiStore((s) => s.activeChatId);
@@ -150,7 +152,7 @@ export function ChatSidebar() {
             walking away doesn't leave an empty "New task" behind. */}
         <button
           onClick={() => setActiveChat(null)}
-          className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium hover:bg-secondary"
+          className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium text-foreground/80 hover:bg-secondary hover:text-foreground"
         >
           <CirclePlus className="size-4" />
           New task
@@ -184,10 +186,22 @@ export function ChatSidebar() {
           </div>
         )}
         <div className="flex items-center justify-between">
-          <ThemeToggle />
+          <div className="flex items-center gap-1">
+            <ThemeToggle />
+            <button
+              onClick={() => setApiKeysOpen(true)}
+              aria-label="API keys"
+              title="API keys"
+              className="flex size-7 items-center justify-center rounded-full text-muted-foreground hover:bg-secondary hover:text-foreground"
+            >
+              <KeyRound className="size-3.5" />
+            </button>
+          </div>
           <UserButton />
         </div>
       </div>
+
+      <ApiKeysDialog open={apiKeysOpen} onOpenChange={setApiKeysOpen} />
     </aside>
   );
 }
