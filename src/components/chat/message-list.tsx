@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Sparkles, FileText, Download, ImageOff } from "lucide-react";
+import { FileText, Download, ImageOff, Brain, Zap, Wrench, Loader2, Check, X, ChevronDown } from "lucide-react";
 import type { Message } from "@/contracts/chat";
 import type { ContentBlock, ToolUseBlock, ToolResultBlock, AttachmentBlock } from "@/contracts/content-blocks";
 import { useChatUiStore } from "@/stores/chat-ui-store";
 import { Markdown } from "./markdown";
 import { CopyButton } from "./copy-button";
+import { KeyValueList } from "./key-value-list";
+import { ApprovalCard } from "./approval-card";
 import { cn } from "@/lib/utils";
 
 /** The copyable text of a message — its text blocks joined, everything else (tool calls, attachments) omitted. */
@@ -17,51 +19,62 @@ function plainTextOf(blocks: ContentBlock[]): string {
     .join("\n\n");
 }
 
-function Avatar({ role }: { role: "user" | "assistant" }) {
-  if (role === "assistant") {
-    return (
-      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-        <Sparkles className="size-3.5" />
-      </div>
-    );
-  }
-  return <div className="size-7 shrink-0 rounded-full bg-secondary" />;
+/** "12:39 PM" — local wall-clock time, no date (matches the reference; messages older than today still just show a time). */
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
+/**
+ * Matches the reference: user turns are a right-aligned bubble, assistant
+ * turns render straight onto the page background — no card, no border, no
+ * avatar — so tool activity and text read as one continuous trace rather
+ * than being boxed in.
+ */
 function Bubble({
   role,
   copyText,
+  timestamp,
   children,
 }: {
   role: "user" | "assistant";
   /** Omitted when there's nothing worth copying (e.g. a failed turn). */
   copyText?: string;
+  /**
+   * When this message actually happened, straight from its own row — a
+   * user message's `createdAt` (set the moment it's persisted, before
+   * dispatch) for "sent," an assistant message's `updatedAt` (only touched
+   * once by the final $transaction in run-turn.ts) for "received back."
+   * Not shown while a message is still failed/pending — there's nothing
+   * true to say yet.
+   */
+  timestamp?: string;
   children: React.ReactNode;
 }) {
-  return (
-    <div className={cn("group/msg flex flex-col gap-1", role === "user" ? "items-end" : "items-start")}>
-      <div className={cn("flex items-start gap-2.5", role === "user" ? "flex-row-reverse" : "flex-row")}>
-        <Avatar role={role} />
-        <div
-          className={cn(
-            "max-w-[70%] rounded-2xl px-4 py-2.5 text-sm flex flex-col gap-1.5 shadow-sm",
-            role === "user"
-              ? "bg-primary text-primary-foreground rounded-tr-sm"
-              : "bg-card border border-border/60 text-foreground rounded-tl-sm",
-          )}
-        >
+  if (role === "user") {
+    return (
+      <div className="group/msg flex flex-col items-end gap-1">
+        <div className="max-w-[70%] rounded-2xl rounded-tr-sm bg-primary px-4 py-2.5 text-sm text-primary-foreground shadow-sm flex flex-col gap-1.5">
           {children}
         </div>
-      </div>
-      {copyText && (
-        <CopyButton
-          text={copyText}
-          className={cn(
-            "opacity-0 transition-opacity group-hover/msg:opacity-100",
-            role === "user" ? "mr-9" : "ml-9",
+        <div className="mr-1 flex items-center gap-2">
+          {copyText && (
+            <CopyButton text={copyText} className="opacity-0 transition-opacity group-hover/msg:opacity-100" />
           )}
-        />
-      )}
+          {timestamp && <span className="text-[0.7rem] text-muted-foreground">{formatTime(timestamp)}</span>}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="group/msg flex flex-col items-start gap-1.5">
+      <div className="flex w-full flex-col gap-2 text-sm text-foreground">{children}</div>
+      <div className="flex items-center gap-2">
+        {copyText && (
+          <CopyButton text={copyText} className="opacity-0 transition-opacity group-hover/msg:opacity-100" />
+        )}
+        {timestamp && <span className="text-[0.7rem] text-muted-foreground">{formatTime(timestamp)}</span>}
+      </div>
     </div>
   );
 }
@@ -165,30 +178,91 @@ function MediaRow({ label, items }: { label?: string; items: MediaItem[] }) {
   );
 }
 
-/** A tool_use paired with its tool_result (matched by id) — a compact status pill, plus inline previews for any image/video the tool was given and/or produced. */
-function ToolCallPill({ toolUse, result }: { toolUse: ToolUseBlock; result?: ToolResultBlock }) {
-  const isError = result?.isError;
-  const inputMedia = extractMedia(toolUse.input);
-  const outputMedia = result && !isError ? extractMedia(result.output) : [];
-  // Only label them when both are present — otherwise which is which is
-  // unambiguous and a label is just noise.
-  const showLabels = inputMedia.length > 0 && outputMedia.length > 0;
+/** "812" -> "812ms", "1830" -> "1.8s" — matches the compact duration badges in the reference ("11ms"). */
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+type ActivityKind = "thinking" | "skill" | "tool";
+
+const ACTIVITY_ICON: Record<ActivityKind, typeof Brain> = { thinking: Brain, skill: Zap, tool: Wrench };
+const ACTIVITY_COLOR: Record<ActivityKind, string> = {
+  thinking: "text-activity-thinking",
+  skill: "text-activity-skill",
+  tool: "text-activity-tool",
+};
+
+/**
+ * One collapsible row in the agent's activity trace — thinking, a skill
+ * load, or a generic tool call — icon-coded and colored per kind, with a
+ * status glyph (spinner while running, check/x once settled) and a duration
+ * badge, expanding to a detail card. Mirrors the "Reasoned" / "Skill" /
+ * "Model schema" rows from the reference screenshots.
+ */
+function ActivityRow({
+  kind,
+  label,
+  status,
+  durationMs,
+  children,
+}: {
+  kind: ActivityKind;
+  label: string;
+  status: "running" | "success" | "error";
+  durationMs?: number;
+  children?: React.ReactNode;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const Icon = ACTIVITY_ICON[kind];
 
   return (
-    <div className="flex flex-col gap-2">
-      <div
-        className={cn(
-          "inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-xs",
-          isError ? "bg-destructive/10 text-destructive" : "bg-foreground/5 text-muted-foreground",
-        )}
-        title={result ? JSON.stringify(result.output) : "running…"}
+    <div className="flex flex-col gap-1.5">
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        className="flex w-fit items-center gap-1.5 rounded-md px-1 py-0.5 text-xs text-muted-foreground hover:bg-secondary/60"
       >
-        <span aria-hidden>{isError ? "✗" : result ? "✓" : "⋯"}</span>
-        <span className="font-mono">{toolUse.toolName}</span>
-      </div>
+        <Icon className={cn("size-3.5", ACTIVITY_COLOR[kind])} />
+        <span className="font-medium text-foreground/80">{label}</span>
+        {status === "running" && <Loader2 className="size-3 animate-spin" />}
+        {status === "success" && <Check className="size-3 text-activity-success" />}
+        {status === "error" && <X className="size-3 text-destructive" />}
+        {durationMs !== undefined && <span className="tabular-nums">{formatDuration(durationMs)}</span>}
+        {children && <ChevronDown className={cn("size-3 transition-transform", expanded && "rotate-180")} />}
+      </button>
+      {expanded && children && (
+        <div className="ml-1.5 rounded-xl border border-border bg-secondary/50 px-3 py-2 text-xs">{children}</div>
+      )}
+    </div>
+  );
+}
+
+/** load_skill / read_skill_asset get the amber "Skill" treatment from the reference; everything else is a generic tool row. */
+function activityKindForTool(toolName: string): ActivityKind {
+  return toolName === "load_skill" || toolName === "read_skill_asset" ? "skill" : "tool";
+}
+
+function ToolActivity({ toolUse, result }: { toolUse: ToolUseBlock; result?: ToolResultBlock }) {
+  const kind = activityKindForTool(toolUse.toolName);
+  const status = !result ? "running" : result.isError ? "error" : "success";
+  const inputMedia = extractMedia(toolUse.input);
+  const outputMedia = result && !result.isError ? extractMedia(result.output) : [];
+  const showLabels = inputMedia.length > 0 && outputMedia.length > 0;
+
+  const detail = (
+    <div className="flex flex-col gap-2">
+      <KeyValueList data={toolUse.input} />
+      {result && (result.isError ? <span className="text-destructive">{String((result.output as { error?: string })?.error ?? "Failed")}</span> : <KeyValueList data={result.output} />)}
       <MediaRow label={showLabels ? "Input" : undefined} items={inputMedia} />
       <MediaRow label={showLabels ? "Result" : undefined} items={outputMedia} />
     </div>
+  );
+
+  return (
+    <ActivityRow kind={kind} label={kind === "skill" ? "Skill" : toolUse.toolName} status={status} durationMs={result?.durationMs}>
+      {detail}
+    </ActivityRow>
   );
 }
 
@@ -217,11 +291,9 @@ function AttachmentPreview({ block }: { block: AttachmentBlock }) {
 }
 
 /**
- * Renders ordered content blocks as-is — text, thinking (dimmed, since it's
- * not meant to read as the final answer), tool calls (paired with their
- * result and collapsed into one pill rather than shown as two separate
- * blocks), and citations. tool_result blocks are skipped on their own;
- * they're folded into the tool_use pill they answer.
+ * Renders ordered content blocks as-is — text, thinking and tool calls as
+ * collapsible activity rows, citations as links. tool_result blocks are
+ * skipped on their own; they're folded into the tool_use row they answer.
  */
 function ContentBlocks({ blocks, role }: { blocks: ContentBlock[]; role: "user" | "assistant" }) {
   const resultByToolUseId = new Map<string, ToolResultBlock>();
@@ -242,12 +314,12 @@ function ContentBlocks({ blocks, role }: { blocks: ContentBlock[]; role: "user" 
           );
         case "thinking":
           return (
-            <p key={i} className="whitespace-pre-wrap text-xs italic text-muted-foreground">
-              {block.text}
-            </p>
+            <ActivityRow key={i} kind="thinking" label="Thinking" status="success">
+              <p className="whitespace-pre-wrap text-foreground/80">{block.text}</p>
+            </ActivityRow>
           );
         case "tool_use":
-          return <ToolCallPill key={i} toolUse={block} result={resultByToolUseId.get(block.id)} />;
+          return <ToolActivity key={i} toolUse={block} result={resultByToolUseId.get(block.id)} />;
         case "citation":
           return (
             <a key={i} href={block.source} className="text-xs text-muted-foreground underline w-fit">
@@ -257,7 +329,7 @@ function ContentBlocks({ blocks, role }: { blocks: ContentBlock[]; role: "user" 
         case "attachment":
           return <AttachmentPreview key={i} block={block} />;
         case "tool_result":
-          return null; // folded into its tool_use pill above
+          return null; // folded into its tool_use row above
         default:
           return null;
       }
@@ -268,7 +340,7 @@ function ContentBlocks({ blocks, role }: { blocks: ContentBlock[]; role: "user" 
 }
 
 export function MessageList({ messages, chatId }: { messages: Message[]; chatId: string | null }) {
-  const { status, streamingText, error } = useChatUiStore();
+  const { status, streamingText, liveToolBlocks, pendingApprovals, stopping, error } = useChatUiStore();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Jump straight to the bottom when a chat is opened or switched — you
@@ -284,15 +356,21 @@ export function MessageList({ messages, chatId }: { messages: Message[]; chatId:
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [messages.length, streamingText]);
+  }, [messages.length, streamingText, liveToolBlocks, pendingApprovals]);
 
   return (
-    <div ref={scrollRef} className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-6 py-6 flex flex-col gap-5">
+    <div ref={scrollRef} className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-6 py-6">
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-5">
       {messages.map((m) => {
         if (m.role !== "USER" && m.role !== "ASSISTANT") return null;
         const role = m.role === "USER" ? "user" : "assistant";
         return (
-          <Bubble key={m.id} role={role} copyText={m.status === "FAILED" ? undefined : plainTextOf(m.content)}>
+          <Bubble
+            key={m.id}
+            role={role}
+            copyText={m.status === "FAILED" ? undefined : plainTextOf(m.content)}
+            timestamp={m.status === "FAILED" ? undefined : role === "user" ? m.createdAt : m.updatedAt}
+          >
             {m.status === "FAILED" ? (
               <span className="text-destructive">This turn failed. Try sending again.</span>
             ) : (
@@ -303,14 +381,34 @@ export function MessageList({ messages, chatId }: { messages: Message[]; chatId:
       })}
       {status === "streaming" && (
         <Bubble role="assistant" copyText={streamingText || undefined}>
+          {/* Live tool activity — reconstructed from the "tool" Realtime
+              stream (see useAgentRunSubscription), rendered with the exact
+              same component a persisted message's tool calls use. This is
+              what makes a slow tool call (a couple of minutes for some
+              Magica generations) visible as it happens, instead of only
+              once the entire turn finishes and this bubble gets replaced
+              by the real persisted message. */}
+          {liveToolBlocks.length > 0 && <ContentBlocks blocks={liveToolBlocks} role="assistant" />}
           {streamingText ? (
             <Markdown>{streamingText}</Markdown>
-          ) : (
-            <span className="animate-pulse">thinking…</span>
+          ) : liveToolBlocks.length === 0 && pendingApprovals.length === 0 ? (
+            <span className="animate-pulse text-muted-foreground">thinking…</span>
+          ) : null}
+          {/* The run is genuinely parked on each of these — nothing else
+              moves until they're answered, so they render last, where the
+              next thing to happen would be. */}
+          {pendingApprovals.map((approval) => (
+            <ApprovalCard key={approval.token} approval={approval} />
+          ))}
+          {stopping && (
+            <span className="text-xs text-muted-foreground">
+              Stopping after the current step…
+            </span>
           )}
         </Bubble>
       )}
       {status === "error" && error && <p className="text-center text-sm text-destructive">{error}</p>}
+    </div>
     </div>
   );
 }

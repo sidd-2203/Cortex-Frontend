@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import type { ContentBlock } from "@/contracts/content-blocks";
+import type { ApprovalRequiredEvent } from "@/contracts/tool-stream";
 
 // Ephemeral, client-only UI state for the turn currently in flight. This is
 // deliberately separate from the message history (which lives in TanStack
@@ -17,10 +19,32 @@ interface ChatUiState {
   publicAccessToken: string | null;
   status: "idle" | "streaming" | "error";
   streamingText: string;
+  /**
+   * tool_use/tool_result blocks reconstructed live from the "tool" Realtime
+   * stream — same shape a persisted message's content array has, so
+   * MessageList renders these with the exact same component. Without this,
+   * a tool call was invisible until the whole turn finished; now it shows
+   * up (and updates to its result) as it actually happens.
+   */
+  liveToolBlocks: ContentBlock[];
+  /**
+   * Approval waitpoints the run is currently parked on, newest last —
+   * derived from the same "tool" stream, so a reload replays them and the
+   * card comes back rather than the run looking mysteriously stuck. An
+   * entry is removed the moment its approval_resolved event arrives
+   * (answered here, answered in another tab, denied by a Stop, or expired),
+   * which is what keeps a stale overlay from lingering.
+   */
+  pendingApprovals: ApprovalRequiredEvent[];
+  /** Set once Stop has been accepted, until the run actually ends — the turn is winding down, not still working. */
+  stopping: boolean;
   error: string | null;
   setActiveChat: (chatId: string | null) => void;
   startRun: (sub: { runId: string; triggerRunId: string; publicAccessToken: string }) => void;
   setStreamingText: (text: string) => void;
+  setLiveToolBlocks: (blocks: ContentBlock[]) => void;
+  setPendingApprovals: (approvals: ApprovalRequiredEvent[]) => void;
+  setStopping: (stopping: boolean) => void;
   finish: () => void;
   fail: (message: string) => void;
 }
@@ -31,6 +55,9 @@ const idleFields = {
   publicAccessToken: null,
   status: "idle" as const,
   streamingText: "",
+  liveToolBlocks: [] as ContentBlock[],
+  pendingApprovals: [] as ApprovalRequiredEvent[],
+  stopping: false,
   error: null,
 };
 
@@ -45,9 +72,15 @@ export const useChatUiStore = create<ChatUiState>((set) => ({
       publicAccessToken: sub.publicAccessToken,
       status: "streaming",
       streamingText: "",
+      liveToolBlocks: [],
+      pendingApprovals: [],
+      stopping: false,
       error: null,
     }),
   setStreamingText: (text) => set({ streamingText: text }),
+  setLiveToolBlocks: (blocks) => set({ liveToolBlocks: blocks }),
+  setPendingApprovals: (approvals) => set({ pendingApprovals: approvals }),
+  setStopping: (stopping) => set({ stopping }),
   finish: () => set({ ...idleFields }),
   fail: (message) => set({ status: "error", error: message }),
 }));
